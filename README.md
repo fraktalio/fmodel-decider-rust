@@ -4,7 +4,7 @@ Rust library for modeling deciders (`command handlers`), process managers,
 and views (`event handlers`) in domain-driven, event-sourced, or state-stored
 architectures with progressive type refinement.
 
-![fmodel](fmodel.webp)
+![fmodel](.assets/fmodel.webp)
 
 ## Table of Contents
 
