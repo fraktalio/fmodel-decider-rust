@@ -13,8 +13,10 @@ use crate::{EventMeta, ViewTrait};
 /// # Type Parameters
 ///
 /// - `E`: Event type that triggers view updates. Must implement [`EventMeta`] so repository
-///   implementations can build secondary indexes.
-/// - `S`: State type (both current and evolved state)
+///   implementations can build secondary indexes. In multi-threaded mode, must also be
+///   `Send + Sync` since it is moved into the `Send` future returned by `execute`.
+/// - `S`: State type (both current and evolved state). In multi-threaded mode, must also be
+///   `Send + Sync`.
 ///
 /// # Associated Types
 ///
@@ -172,7 +174,8 @@ use crate::{EventMeta, ViewTrait};
 #[cfg(not(feature = "single-threaded"))]
 pub trait ViewRepository<E, S>: Send + Sync
 where
-    E: EventMeta,
+    E: EventMeta + Send + Sync,
+    S: Send + Sync,
 {
     /// Error type for repository operations.
     ///

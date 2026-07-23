@@ -278,7 +278,8 @@ use crate::{EventMeta, ViewTrait};
 #[cfg(not(feature = "single-threaded"))]
 pub struct MaterializedViewHandler<E, S, V, R>
 where
-    E: EventMeta,
+    E: EventMeta + Send + Sync,
+    S: Send + Sync,
     V: ViewTrait<S, S, E> + Send + Sync,
     R: ViewRepository<E, S> + Send + Sync,
 {
@@ -290,7 +291,8 @@ where
 #[cfg(not(feature = "single-threaded"))]
 impl<E, S, V, R> MaterializedViewHandler<E, S, V, R>
 where
-    E: EventMeta,
+    E: EventMeta + Send + Sync,
+    S: Send + Sync,
     V: ViewTrait<S, S, E> + Send + Sync,
     R: ViewRepository<E, S> + Send + Sync,
 {

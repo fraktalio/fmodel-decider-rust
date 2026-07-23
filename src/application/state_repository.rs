@@ -13,8 +13,10 @@ use crate::{IdempotencyKey, StateComputationTrait};
 /// # Type Parameters
 ///
 /// - `C`: Command type that triggers state changes. Must implement [`IdempotencyKey`] so
-///   repository implementations can deduplicate retried commands.
-/// - `S`: State type (both current and new state)
+///   repository implementations can deduplicate retried commands. In multi-threaded mode,
+///   must also be `Send + Sync` since it is moved into the `Send` future returned by `execute`.
+/// - `S`: State type (both current and new state). In multi-threaded mode, must also be
+///   `Send + Sync`.
 ///
 /// # Associated Types
 ///
@@ -161,7 +163,8 @@ use crate::{IdempotencyKey, StateComputationTrait};
 #[cfg(not(feature = "single-threaded"))]
 pub trait StateRepository<C, S>: Send + Sync
 where
-    C: IdempotencyKey,
+    C: IdempotencyKey + Send + Sync,
+    S: Send + Sync,
 {
     /// Error type for repository operations.
     ///

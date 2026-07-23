@@ -13,11 +13,14 @@ use crate::{EventComputationTrait, EventMeta, IdempotencyKey};
 /// # Type Parameters
 ///
 /// - `C`: Command type that triggers state changes. Must implement [`IdempotencyKey`] so
-///   repository implementations can deduplicate retried commands.
+///   repository implementations can deduplicate retried commands. In multi-threaded mode,
+///   must also be `Send + Sync` since it is moved into the `Send` future returned by `execute`.
 /// - `Ei`: Input event type (events loaded from storage). Must implement [`EventMeta`] so
-///   repository implementations can build secondary indexes.
+///   repository implementations can build secondary indexes. In multi-threaded mode, must
+///   also be `Send + Sync`.
 /// - `Eo`: Output event type (events to be persisted). Must implement [`EventMeta`] so
-///   repository implementations can index newly persisted events.
+///   repository implementations can index newly persisted events. In multi-threaded mode,
+///   must also be `Send + Sync`.
 ///
 /// # Associated Types
 ///
@@ -177,9 +180,9 @@ use crate::{EventComputationTrait, EventMeta, IdempotencyKey};
 #[cfg(not(feature = "single-threaded"))]
 pub trait EventRepository<C, Ei, Eo>: Send + Sync
 where
-    C: IdempotencyKey,
-    Ei: EventMeta,
-    Eo: EventMeta,
+    C: IdempotencyKey + Send + Sync,
+    Ei: EventMeta + Send + Sync,
+    Eo: EventMeta + Send + Sync,
 {
     /// Error type for repository operations.
     ///

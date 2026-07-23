@@ -38,11 +38,12 @@ pub struct QueryTuple {
 /// # Type Parameters
 ///
 /// - `E`: Event type to load. Must implement [`EventMeta`], since `QueryTuple` queries by
-///   the exact `event_type`/`tags` shape `EventMeta` produces.
+///   the exact `event_type`/`tags` shape `EventMeta` produces. In multi-threaded mode, must
+///   also be `Send + Sync` since it is part of the `Send` future returned by `load`.
 #[cfg(not(feature = "single-threaded"))]
 pub trait EventLoader<E>: Send + Sync
 where
-    E: EventMeta,
+    E: EventMeta + Send + Sync,
 {
     /// Error type for load operations.
     type Error;
@@ -93,7 +94,7 @@ where
 #[cfg(not(feature = "single-threaded"))]
 pub struct EventSourcedQueryHandler<E, S, V, L>
 where
-    E: EventMeta,
+    E: EventMeta + Send + Sync,
     V: ViewTrait<S, S, E> + Send + Sync,
     L: EventLoader<E> + Send + Sync,
 {
@@ -105,7 +106,7 @@ where
 #[cfg(not(feature = "single-threaded"))]
 impl<E, S, V, L> EventSourcedQueryHandler<E, S, V, L>
 where
-    E: EventMeta,
+    E: EventMeta + Send + Sync,
     V: ViewTrait<S, S, E> + Send + Sync,
     L: EventLoader<E> + Send + Sync,
 {

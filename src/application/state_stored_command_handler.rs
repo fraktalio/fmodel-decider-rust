@@ -268,7 +268,8 @@ use crate::{IdempotencyKey, StateComputationTrait};
 #[cfg(not(feature = "single-threaded"))]
 pub struct StateStoredCommandHandler<C, S, D, R>
 where
-    C: IdempotencyKey,
+    C: IdempotencyKey + Send + Sync,
+    S: Send + Sync,
     D: StateComputationTrait<C, S> + Send + Sync,
     R: StateRepository<C, S> + Send + Sync,
 {
@@ -280,7 +281,8 @@ where
 #[cfg(not(feature = "single-threaded"))]
 impl<C, S, D, R> StateStoredCommandHandler<C, S, D, R>
 where
-    C: IdempotencyKey,
+    C: IdempotencyKey + Send + Sync,
+    S: Send + Sync,
     D: StateComputationTrait<C, S> + Send + Sync,
     R: StateRepository<C, S> + Send + Sync,
 {

@@ -314,9 +314,9 @@ use crate::{EventComputationTrait, EventMeta, IdempotencyKey};
 #[cfg(not(feature = "single-threaded"))]
 pub struct EventSourcedCommandHandler<C, Ei, Eo, D, R>
 where
-    C: IdempotencyKey,
-    Ei: EventMeta,
-    Eo: EventMeta,
+    C: IdempotencyKey + Send + Sync,
+    Ei: EventMeta + Send + Sync,
+    Eo: EventMeta + Send + Sync,
     D: EventComputationTrait<C, Ei, Eo> + Send + Sync,
     R: EventRepository<C, Ei, Eo> + Send + Sync,
 {
@@ -328,9 +328,9 @@ where
 #[cfg(not(feature = "single-threaded"))]
 impl<C, Ei, Eo, D, R> EventSourcedCommandHandler<C, Ei, Eo, D, R>
 where
-    C: IdempotencyKey,
-    Ei: EventMeta,
-    Eo: EventMeta,
+    C: IdempotencyKey + Send + Sync,
+    Ei: EventMeta + Send + Sync,
+    Eo: EventMeta + Send + Sync,
     D: EventComputationTrait<C, Ei, Eo> + Send + Sync,
     R: EventRepository<C, Ei, Eo> + Send + Sync,
 {
