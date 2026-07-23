@@ -225,23 +225,6 @@ use crate::EventComputationTrait;
 /// # Ok(())
 /// # }
 /// ```
-///
-/// # Relationship to fmodel-ts
-///
-/// This struct adapts the TypeScript `EventSourcedCommandHandler` class:
-///
-/// ```typescript
-/// export class EventSourcedCommandHandler<C, Ei, Eo, CM, EM> {
-///   constructor(
-///     private readonly decider: IEventComputation<C, Ei, Eo>,
-///     private readonly eventRepository: IEventRepository<C, Ei, Eo, CM, EM>,
-///   ) {}
-///
-///   handle(command: C & CM): Promise<readonly (Eo & EM)[]> {
-///     return this.eventRepository.execute(command, this.decider);
-///   }
-/// }
-/// ```
 #[cfg(not(feature = "single-threaded"))]
 pub struct EventSourcedCommandHandler<C, Ei, Eo, D, R>
 where
@@ -415,6 +398,26 @@ where
     pub async fn handle(&self, command: C) -> Result<Vec<Eo>, R::Error> {
         self.repository.execute(command, &*self.decider).await
     }
+
+    /// Handle a batch of commands by executing them through the event repository.
+    ///
+    /// This method delegates to `repository.execute_batch(commands, &decider)`. Commands are
+    /// applied in order and the returned vector is the concatenation of all output events
+    /// produced across the batch.
+    ///
+    /// # Parameters
+    ///
+    /// - `commands`: The ordered list of commands to execute
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Vec<Eo>)`: The concatenation of all persisted output events on success
+    /// - `Err(R::Error)`: Any error during fetch, compute, or save stages
+    pub async fn handle_batch(&self, commands: Vec<C>) -> Result<Vec<Eo>, R::Error> {
+        self.repository
+            .execute_batch(commands, &*self.decider)
+            .await
+    }
 }
 
 /// Command handler for event-sourced aggregates (single-threaded variant).
@@ -550,5 +553,25 @@ where
     /// See the multi-threaded variant documentation for detailed usage information.
     pub async fn handle(&self, command: C) -> Result<Vec<Eo>, R::Error> {
         self.repository.execute(command, &*self.decider).await
+    }
+
+    /// Handle a batch of commands by executing them through the event repository.
+    ///
+    /// This method delegates to `repository.execute_batch(commands, &decider)`. Commands are
+    /// applied in order and the returned vector is the concatenation of all output events
+    /// produced across the batch.
+    ///
+    /// # Parameters
+    ///
+    /// - `commands`: The ordered list of commands to execute
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Vec<Eo>)`: The concatenation of all persisted output events on success
+    /// - `Err(R::Error)`: Any error during fetch, compute, or save stages
+    pub async fn handle_batch(&self, commands: Vec<C>) -> Result<Vec<Eo>, R::Error> {
+        self.repository
+            .execute_batch(commands, &*self.decider)
+            .await
     }
 }

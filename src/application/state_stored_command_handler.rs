@@ -217,23 +217,6 @@ use crate::StateComputationTrait;
 /// # Ok(())
 /// # }
 /// ```
-///
-/// # Relationship to fmodel-ts
-///
-/// This struct adapts the TypeScript `StateStoredCommandHandler` class:
-///
-/// ```typescript
-/// export class StateStoredCommandHandler<C, S, CM, SM> {
-///   constructor(
-///     private readonly component: IStateComputation<C, S>,
-///     private readonly stateRepository: IStateRepository<C, S, CM, SM>,
-///   ) {}
-///
-///   handle(command: C & CM): Promise<S & SM> {
-///     return this.stateRepository.execute(command, this.component);
-///   }
-/// }
-/// ```
 #[cfg(not(feature = "single-threaded"))]
 pub struct StateStoredCommandHandler<C, S, D, R>
 where
@@ -403,6 +386,25 @@ where
     pub async fn handle(&self, command: C) -> Result<S, R::Error> {
         self.repository.execute(command, &*self.decider).await
     }
+
+    /// Handle a batch of commands by executing them through the state repository.
+    ///
+    /// This method delegates to `repository.execute_batch(commands, &decider)`. Commands are
+    /// applied in order and the single, final state is returned.
+    ///
+    /// # Parameters
+    ///
+    /// - `commands`: The ordered list of commands to execute
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(S)`: The final persisted state on success
+    /// - `Err(R::Error)`: Any error during fetch, compute, or save stages
+    pub async fn handle_batch(&self, commands: Vec<C>) -> Result<S, R::Error> {
+        self.repository
+            .execute_batch(commands, &*self.decider)
+            .await
+    }
 }
 
 /// Command handler for state-stored systems (single-threaded variant).
@@ -536,5 +538,24 @@ where
     /// See the multi-threaded variant documentation for detailed usage information.
     pub async fn handle(&self, command: C) -> Result<S, R::Error> {
         self.repository.execute(command, &*self.decider).await
+    }
+
+    /// Handle a batch of commands by executing them through the state repository.
+    ///
+    /// This method delegates to `repository.execute_batch(commands, &decider)`. Commands are
+    /// applied in order and the single, final state is returned.
+    ///
+    /// # Parameters
+    ///
+    /// - `commands`: The ordered list of commands to execute
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(S)`: The final persisted state on success
+    /// - `Err(R::Error)`: Any error during fetch, compute, or save stages
+    pub async fn handle_batch(&self, commands: Vec<C>) -> Result<S, R::Error> {
+        self.repository
+            .execute_batch(commands, &*self.decider)
+            .await
     }
 }

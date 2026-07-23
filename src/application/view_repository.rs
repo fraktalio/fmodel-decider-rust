@@ -151,19 +151,6 @@ use crate::ViewTrait;
 ///     TransactionFailed { stage: String, cause: String },
 /// }
 /// ```
-///
-/// # Relationship to fmodel-ts
-///
-/// This trait adapts the TypeScript `IViewRepository` pattern from fmodel-ts:
-///
-/// ```typescript
-/// export interface IViewRepository<E, S, EM, SM> {
-///   readonly execute: (
-///     event: E & EM,
-///     view: IView<S, E>,
-///   ) => Promise<S & SM>;
-/// }
-/// ```
 #[cfg(not(feature = "single-threaded"))]
 pub trait ViewRepository<E, S>: Send + Sync {
     /// Error type for repository operations.
@@ -247,6 +234,46 @@ pub trait ViewRepository<E, S>: Send + Sync {
     ) -> impl std::future::Future<Output = Result<S, Self::Error>> + Send
     where
         V: ViewTrait<S, S, E> + Send + Sync;
+
+    /// Execute a batch of events against a materialized view.
+    ///
+    /// This is the batch counterpart of [`execute`](Self::execute). It processes an ordered
+    /// list of events and returns the persisted state after each one, as a `Vec<S>` aligned
+    /// with the input events.
+    ///
+    /// # Semantics
+    ///
+    /// Events are applied **in order**. Because events in a batch may target different view
+    /// instances (identified independently by each event), this method returns one persisted
+    /// state per input event rather than a single folded state — the `i`-th element of the
+    /// result is the state persisted after processing `events[i]`.
+    ///
+    /// # Atomicity
+    ///
+    /// Implementations should treat the batch as a single unit of work: either all events are
+    /// applied and their resulting states persisted, or none are. The exact mechanism depends
+    /// on the underlying storage (transactions, optimistic locking, etc.).
+    ///
+    /// # Type Parameters
+    ///
+    /// - `V`: The view implementing `ViewTrait<S, S, E>`
+    ///
+    /// # Parameters
+    ///
+    /// - `events`: The ordered list of events to process
+    /// - `view`: Reference to the view component that evolves state
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Vec<S>)`: The persisted states, one per input event, in order
+    /// - `Err(Self::Error)`: Any error during fetch, evolve, or save stages
+    fn execute_batch<V>(
+        &self,
+        events: Vec<E>,
+        view: &V,
+    ) -> impl std::future::Future<Output = Result<Vec<S>, Self::Error>> + Send
+    where
+        V: ViewTrait<S, S, E> + Send + Sync;
 }
 
 /// Repository trait for materialized views (single-threaded variant).
@@ -325,6 +352,17 @@ pub trait ViewRepository<E, S> {
         event: E,
         view: &V,
     ) -> impl std::future::Future<Output = Result<S, Self::Error>>
+    where
+        V: ViewTrait<S, S, E>;
+
+    /// Execute a batch of events against a materialized view.
+    ///
+    /// See the multi-threaded variant documentation for detailed information.
+    fn execute_batch<V>(
+        &self,
+        events: Vec<E>,
+        view: &V,
+    ) -> impl std::future::Future<Output = Result<Vec<S>, Self::Error>>
     where
         V: ViewTrait<S, S, E>;
 }

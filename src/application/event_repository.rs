@@ -147,19 +147,6 @@ use crate::EventComputationTrait;
 ///     TransactionFailed { stage: String, cause: String },
 /// }
 /// ```
-///
-/// # Relationship to fmodel-ts
-///
-/// This trait adapts the TypeScript `IEventRepository` interface:
-///
-/// ```typescript
-/// export interface IEventRepository<C, Ei, Eo, CM, EM> {
-///   readonly execute: (
-///     command: C & CM,
-///     decider: IEventComputation<C, Ei, Eo>,
-///   ) => Promise<readonly (Eo & EM)[]>;
-/// }
-/// ```
 #[cfg(not(feature = "single-threaded"))]
 pub trait EventRepository<C, Ei, Eo>: Send + Sync {
     /// Error type for repository operations.
@@ -250,6 +237,45 @@ pub trait EventRepository<C, Ei, Eo>: Send + Sync {
     ) -> impl std::future::Future<Output = Result<Vec<Eo>, Self::Error>> + Send
     where
         D: EventComputationTrait<C, Ei, Eo> + Send + Sync;
+
+    /// Execute a batch of commands against an event-sourced aggregate.
+    ///
+    /// This is the batch counterpart of [`execute`](Self::execute). It processes an ordered
+    /// list of commands and returns the flat list of all output events produced across the
+    /// whole batch.
+    ///
+    /// # Semantics
+    ///
+    /// Commands are applied **in order**, and each command is decided against the state that
+    /// results from applying the events of all preceding commands in the same batch. The
+    /// returned vector is the concatenation of the output events of every command, in order.
+    ///
+    /// # Atomicity
+    ///
+    /// Implementations should treat the batch as a single unit of work: either all commands
+    /// succeed and their events are persisted, or none are. The exact mechanism depends on the
+    /// underlying storage (transactions, optimistic locking, etc.).
+    ///
+    /// # Type Parameters
+    ///
+    /// - `D`: The decider implementing `EventComputationTrait<C, Ei, Eo>`
+    ///
+    /// # Parameters
+    ///
+    /// - `commands`: The ordered list of commands to execute
+    /// - `decider`: Reference to the domain component that computes new events
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Vec<Eo>)`: The concatenation of all persisted output events on success
+    /// - `Err(Self::Error)`: Any error during fetch, compute, or save stages
+    fn execute_batch<D>(
+        &self,
+        commands: Vec<C>,
+        decider: &D,
+    ) -> impl std::future::Future<Output = Result<Vec<Eo>, Self::Error>> + Send
+    where
+        D: EventComputationTrait<C, Ei, Eo> + Send + Sync;
 }
 
 /// Repository trait for event-sourced aggregates (single-threaded variant).
@@ -328,6 +354,17 @@ pub trait EventRepository<C, Ei, Eo> {
     fn execute<D>(
         &self,
         command: C,
+        decider: &D,
+    ) -> impl std::future::Future<Output = Result<Vec<Eo>, Self::Error>>
+    where
+        D: EventComputationTrait<C, Ei, Eo>;
+
+    /// Execute a batch of commands against an event-sourced aggregate.
+    ///
+    /// See the multi-threaded variant documentation for detailed information.
+    fn execute_batch<D>(
+        &self,
+        commands: Vec<C>,
         decider: &D,
     ) -> impl std::future::Future<Output = Result<Vec<Eo>, Self::Error>>
     where

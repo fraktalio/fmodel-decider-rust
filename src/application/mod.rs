@@ -414,36 +414,6 @@
 //! - Use case: Single-threaded performance optimization
 //! ```
 //!
-//! ## Relationship to fmodel-ts
-//!
-//! This design adapts the TypeScript `IEventRepository` pattern from fmodel-ts:
-//!
-//! ```typescript
-//! // TypeScript
-//! export interface IEventRepository<C, Ei, Eo, CM, EM> {
-//!   readonly execute: (
-//!     command: C & CM,
-//!     decider: IEventComputation<C, Ei, Eo>,
-//!   ) => Promise<readonly (Eo & EM)[]>;
-//! }
-//! ```
-//!
-//! ```rust,no_run
-//! # use fmodel_decider_rust::EventComputationTrait;
-//! // Rust equivalent
-//! trait EventRepository<C, Ei, Eo>: Send + Sync {
-//!     type Error;
-//!     
-//!     async fn execute<D>(
-//!         &self,
-//!         command: C,
-//!         decider: &D,
-//!     ) -> Result<Vec<Eo>, Self::Error>
-//!     where
-//!         D: EventComputationTrait<C, Ei, Eo> + Send + Sync;
-//! }
-//! ```
-//!
 //! ## Design Principles
 //!
 //! 1. **Dependency Injection**: Domain components are passed as parameters to `execute`,

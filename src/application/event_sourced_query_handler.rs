@@ -118,6 +118,28 @@ where
             .fold(self.view.initial_state(), |s, e| self.view.evolve(&s, e));
         Ok(state)
     }
+
+    /// Handle a batch of independent queries.
+    ///
+    /// Each element of `queries` is an independent set of query tuples; this method runs
+    /// [`handle`](Self::handle) for each and returns one projected state per query, in order.
+    /// Queries are evaluated sequentially and the projected states are not persisted.
+    ///
+    /// # Parameters
+    ///
+    /// - `queries`: The list of query-tuple sets to evaluate
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Vec<S>)`: One projected state per input query, in order
+    /// - `Err(L::Error)`: Any error while loading events for a query
+    pub async fn handle_batch(&self, queries: Vec<Vec<QueryTuple>>) -> Result<Vec<S>, L::Error> {
+        let mut states = Vec::with_capacity(queries.len());
+        for query_tuples in queries {
+            states.push(self.handle(&query_tuples).await?);
+        }
+        Ok(states)
+    }
 }
 
 /// Query handler for on-demand event-sourced projections (single-threaded variant).
@@ -158,5 +180,27 @@ where
             .iter()
             .fold(self.view.initial_state(), |s, e| self.view.evolve(&s, e));
         Ok(state)
+    }
+
+    /// Handle a batch of independent queries.
+    ///
+    /// Each element of `queries` is an independent set of query tuples; this method runs
+    /// [`handle`](Self::handle) for each and returns one projected state per query, in order.
+    /// Queries are evaluated sequentially and the projected states are not persisted.
+    ///
+    /// # Parameters
+    ///
+    /// - `queries`: The list of query-tuple sets to evaluate
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Vec<S>)`: One projected state per input query, in order
+    /// - `Err(L::Error)`: Any error while loading events for a query
+    pub async fn handle_batch(&self, queries: Vec<Vec<QueryTuple>>) -> Result<Vec<S>, L::Error> {
+        let mut states = Vec::with_capacity(queries.len());
+        for query_tuples in queries {
+            states.push(self.handle(&query_tuples).await?);
+        }
+        Ok(states)
     }
 }

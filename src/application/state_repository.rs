@@ -143,19 +143,6 @@ use crate::StateComputationTrait;
 ///     TransactionFailed { stage: String, cause: String },
 /// }
 /// ```
-///
-/// # Relationship to fmodel-ts
-///
-/// This trait adapts the TypeScript `IStateRepository` pattern from fmodel-ts:
-///
-/// ```typescript
-/// export interface IStateRepository<C, S, CM, SM> {
-///   readonly execute: (
-///     command: C & CM,
-///     component: IStateComputation<C, S>,
-///   ) => Promise<S & SM>;
-/// }
-/// ```
 #[cfg(not(feature = "single-threaded"))]
 pub trait StateRepository<C, S>: Send + Sync {
     /// Error type for repository operations.
@@ -230,6 +217,50 @@ pub trait StateRepository<C, S>: Send + Sync {
     fn execute<D>(
         &self,
         command: C,
+        component: &D,
+    ) -> impl std::future::Future<Output = Result<S, Self::Error>> + Send
+    where
+        D: StateComputationTrait<C, S> + Send + Sync;
+
+    /// Execute a batch of commands against a state-stored aggregate.
+    ///
+    /// This is the batch counterpart of [`execute`](Self::execute). It processes an ordered
+    /// list of commands and returns the single, final state after applying all of them.
+    ///
+    /// # Semantics
+    ///
+    /// Commands are applied **in order**, each against the state produced by the preceding
+    /// command in the batch. Only the final state is returned (mirroring the TypeScript
+    /// `IStateRepository.executeBatch`, which returns a single `S`, not a list).
+    ///
+    /// # Atomicity
+    ///
+    /// Implementations should treat the batch as a single unit of work: either all commands
+    /// succeed and the resulting state is persisted, or none are. The exact mechanism depends
+    /// on the underlying storage (transactions, optimistic locking, etc.).
+    ///
+    /// # Empty batch
+    ///
+    /// An empty `commands` vec has no computed result. Implementations should decide on a
+    /// well-defined behavior for this case — typically fetching and returning the current
+    /// persisted state, or returning an error — and document it.
+    ///
+    /// # Type Parameters
+    ///
+    /// - `D`: The component implementing `StateComputationTrait<C, S>`
+    ///
+    /// # Parameters
+    ///
+    /// - `commands`: The ordered list of commands to execute
+    /// - `component`: Reference to the domain component that computes new state
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(S)`: The final persisted state on success
+    /// - `Err(Self::Error)`: Any error during fetch, compute, or save stages
+    fn execute_batch<D>(
+        &self,
+        commands: Vec<C>,
         component: &D,
     ) -> impl std::future::Future<Output = Result<S, Self::Error>> + Send
     where
@@ -310,6 +341,17 @@ pub trait StateRepository<C, S> {
     fn execute<D>(
         &self,
         command: C,
+        component: &D,
+    ) -> impl std::future::Future<Output = Result<S, Self::Error>>
+    where
+        D: StateComputationTrait<C, S>;
+
+    /// Execute a batch of commands against a state-stored aggregate.
+    ///
+    /// See the multi-threaded variant documentation for detailed information.
+    fn execute_batch<D>(
+        &self,
+        commands: Vec<C>,
         component: &D,
     ) -> impl std::future::Future<Output = Result<S, Self::Error>>
     where
