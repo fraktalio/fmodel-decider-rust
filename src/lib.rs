@@ -183,8 +183,7 @@ mod workflow;
 
 pub use application::{
     EventLoader, EventRepository, EventSourcedCommandHandler, EventSourcedQueryHandler,
-    MaterializedViewHandler, QueryTuple, StateRepository, StateStoredCommandHandler,
-    ViewRepository,
+    MaterializedViewHandler, StateRepository, StateStoredCommandHandler, ViewRepository,
 };
 pub use decider::AggregateDecider;
 pub use dynamic_decider::DCBDecider;
@@ -635,6 +634,25 @@ pub trait EventMeta {
     /// implementations build power set indexes over these tags to support queries
     /// by any combination.
     fn tags(&self) -> Vec<Tag>;
+}
+
+/// A query specification for fetching events from the event store.
+///
+/// Consists of an event type and zero or more tags that identify the event stream to query.
+/// This is the core crate's dependency-free equivalent of the TypeScript `QueryTuple` type
+/// from fmodel-ts: `[...tags, eventType]`.
+///
+/// # Fields
+///
+/// - `event_type`: The event type identifier (e.g., `"RestaurantCreatedEvent"`)
+/// - `tags`: Tags to filter by. Empty vec queries all events of the type. These are matched
+///   against the tags an event exposes via [`EventMeta::tags`].
+#[derive(Debug, Clone)]
+pub struct QueryTuple {
+    /// The event type identifier to query.
+    pub event_type: String,
+    /// Tags to filter by.
+    pub tags: Vec<Tag>,
 }
 
 /// Implemented by commands that carry an idempotency key.
