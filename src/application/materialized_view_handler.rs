@@ -218,23 +218,6 @@ use crate::ViewTrait;
 /// # Ok(())
 /// # }
 /// ```
-///
-/// # Relationship to fmodel-ts
-///
-/// This struct adapts the TypeScript `MaterializedViewHandler` class:
-///
-/// ```typescript
-/// export class MaterializedViewHandler<E, S, EM, SM> {
-///   constructor(
-///     private readonly view: IView<S, E>,
-///     private readonly viewRepository: IViewRepository<E, S, EM, SM>,
-///   ) {}
-///
-///   handle(event: E & EM): Promise<S & SM> {
-///     return this.viewRepository.execute(event, this.view);
-///   }
-/// }
-/// ```
 #[cfg(not(feature = "single-threaded"))]
 pub struct MaterializedViewHandler<E, S, V, R>
 where
@@ -408,6 +391,23 @@ where
     pub async fn handle(&self, event: E) -> Result<S, R::Error> {
         self.repository.execute(event, &*self.view).await
     }
+
+    /// Handle a batch of events by executing them through the view repository.
+    ///
+    /// This method delegates to `repository.execute_batch(events, &view)`. Events are applied
+    /// in order and one persisted state is returned per input event.
+    ///
+    /// # Parameters
+    ///
+    /// - `events`: The ordered list of events to process
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Vec<S>)`: The persisted states, one per input event, in order
+    /// - `Err(R::Error)`: Any error during fetch, evolve, or save stages
+    pub async fn handle_batch(&self, events: Vec<E>) -> Result<Vec<S>, R::Error> {
+        self.repository.execute_batch(events, &*self.view).await
+    }
 }
 
 /// Handler for materialized views (single-threaded variant).
@@ -546,5 +546,22 @@ where
     /// See the multi-threaded variant documentation for detailed usage information.
     pub async fn handle(&self, event: E) -> Result<S, R::Error> {
         self.repository.execute(event, &*self.view).await
+    }
+
+    /// Handle a batch of events by executing them through the view repository.
+    ///
+    /// This method delegates to `repository.execute_batch(events, &view)`. Events are applied
+    /// in order and one persisted state is returned per input event.
+    ///
+    /// # Parameters
+    ///
+    /// - `events`: The ordered list of events to process
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Vec<S>)`: The persisted states, one per input event, in order
+    /// - `Err(R::Error)`: Any error during fetch, evolve, or save stages
+    pub async fn handle_batch(&self, events: Vec<E>) -> Result<Vec<S>, R::Error> {
+        self.repository.execute_batch(events, &*self.view).await
     }
 }
