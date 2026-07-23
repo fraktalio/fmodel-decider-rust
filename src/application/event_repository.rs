@@ -1,4 +1,4 @@
-use crate::{EventComputationTrait, EventMeta, IdempotencyKey};
+use crate::{CommandQueries, EventComputationTrait, EventMeta, IdempotencyKey};
 
 // ================================================================================================
 // EventRepository Trait
@@ -13,8 +13,9 @@ use crate::{EventComputationTrait, EventMeta, IdempotencyKey};
 /// # Type Parameters
 ///
 /// - `C`: Command type that triggers state changes. Must implement [`IdempotencyKey`] so
-///   repository implementations can deduplicate retried commands. In multi-threaded mode,
-///   must also be `Send + Sync` since it is moved into the `Send` future returned by `execute`.
+///   repository implementations can deduplicate retried commands, and [`CommandQueries`] so
+///   DCB-style repositories know which events to fetch. In multi-threaded mode, must also
+///   be `Send + Sync` since it is moved into the `Send` future returned by `execute`.
 /// - `Ei`: Input event type (events loaded from storage). Must implement [`EventMeta`] so
 ///   repository implementations can build secondary indexes. In multi-threaded mode, must
 ///   also be `Send + Sync`.
@@ -49,7 +50,7 @@ use crate::{EventComputationTrait, EventMeta, IdempotencyKey};
 /// ```rust,no_run
 /// use std::collections::HashMap;
 /// use std::sync::{Arc, Mutex};
-/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, Tag};
+/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, CommandQueries, QueryTuple, Tag};
 ///
 /// # #[derive(Clone, Debug)]
 /// # enum Command { OpenAccount { id: String, idempotency_key: String } }
@@ -57,6 +58,16 @@ use crate::{EventComputationTrait, EventMeta, IdempotencyKey};
 /// #     fn idempotency_key(&self) -> &str {
 /// #         match self {
 /// #             Command::OpenAccount { idempotency_key, .. } => idempotency_key,
+/// #         }
+/// #     }
+/// # }
+/// # impl CommandQueries for Command {
+/// #     fn queries(&self) -> Vec<QueryTuple> {
+/// #         match self {
+/// #             Command::OpenAccount { id, .. } => vec![QueryTuple {
+/// #                 event_type: "AccountOpened".to_string(),
+/// #                 tags: vec![Tag::new("id", id.clone())],
+/// #             }],
 /// #         }
 /// #     }
 /// # }
@@ -85,7 +96,7 @@ use crate::{EventComputationTrait, EventMeta, IdempotencyKey};
 /// # #[cfg(not(feature = "single-threaded"))]
 /// # trait EventRepository<C, Ei, Eo>: Send + Sync
 /// # where
-/// #     C: IdempotencyKey,
+/// #     C: IdempotencyKey + CommandQueries,
 /// #     Ei: EventMeta,
 /// #     Eo: EventMeta,
 /// # {
@@ -180,7 +191,7 @@ use crate::{EventComputationTrait, EventMeta, IdempotencyKey};
 #[cfg(not(feature = "single-threaded"))]
 pub trait EventRepository<C, Ei, Eo>: Send + Sync
 where
-    C: IdempotencyKey + Send + Sync,
+    C: IdempotencyKey + CommandQueries + Send + Sync,
     Ei: EventMeta + Send + Sync,
     Eo: EventMeta + Send + Sync,
 {
@@ -225,10 +236,15 @@ where
     /// when a command with a previously seen key is executed again, the original output
     /// events should be returned without re-running the decider.
     ///
+    /// # DCB Queries
+    ///
+    /// DCB-style implementations should use `command.queries()` to determine which events
+    /// to fetch for the FETCH stage, instead of assuming a single fixed stream.
+    ///
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, Tag};
+    /// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, CommandQueries, QueryTuple, Tag};
     /// # #[derive(Clone, Debug)]
     /// # enum Command { Deposit { amount: u32, idempotency_key: String } }
     /// # impl IdempotencyKey for Command {
@@ -236,6 +252,11 @@ where
     /// #         match self {
     /// #             Command::Deposit { idempotency_key, .. } => idempotency_key,
     /// #         }
+    /// #     }
+    /// # }
+    /// # impl CommandQueries for Command {
+    /// #     fn queries(&self) -> Vec<QueryTuple> {
+    /// #         Vec::new()
     /// #     }
     /// # }
     /// # #[derive(Clone, Debug)]
@@ -256,7 +277,7 @@ where
     /// # #[cfg(not(feature = "single-threaded"))]
     /// # trait EventRepository<C, Ei, Eo>: Send + Sync
     /// # where
-    /// #     C: IdempotencyKey,
+    /// #     C: IdempotencyKey + CommandQueries,
     /// #     Ei: EventMeta,
     /// #     Eo: EventMeta,
     /// # {
@@ -325,6 +346,11 @@ where
     /// `idempotency_key()` to detect and skip re-running previously handled commands within
     /// the batch.
     ///
+    /// # DCB Queries
+    ///
+    /// As with [`execute`](Self::execute), DCB-style implementations should use each
+    /// command's `queries()` to determine which events to fetch for it.
+    ///
     /// # Type Parameters
     ///
     /// - `D`: The decider implementing `EventComputationTrait<C, Ei, Eo>`
@@ -375,7 +401,7 @@ where
 /// use std::rc::Rc;
 /// use std::cell::RefCell;
 /// use std::collections::HashMap;
-/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, Tag};
+/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, CommandQueries, QueryTuple, Tag};
 ///
 /// # #[derive(Clone, Debug)]
 /// # enum Command { Deposit { amount: u32, idempotency_key: String } }
@@ -384,6 +410,11 @@ where
 /// #         match self {
 /// #             Command::Deposit { idempotency_key, .. } => idempotency_key,
 /// #         }
+/// #     }
+/// # }
+/// # impl CommandQueries for Command {
+/// #     fn queries(&self) -> Vec<QueryTuple> {
+/// #         Vec::new()
 /// #     }
 /// # }
 /// # #[derive(Clone, Debug)]
@@ -406,7 +437,7 @@ where
 ///
 /// # trait EventRepository<C, Ei, Eo>
 /// # where
-/// #     C: IdempotencyKey,
+/// #     C: IdempotencyKey + CommandQueries,
 /// #     Ei: EventMeta,
 /// #     Eo: EventMeta,
 /// # {
@@ -437,7 +468,7 @@ where
 #[cfg(feature = "single-threaded")]
 pub trait EventRepository<C, Ei, Eo>
 where
-    C: IdempotencyKey,
+    C: IdempotencyKey + CommandQueries,
     Ei: EventMeta,
     Eo: EventMeta,
 {

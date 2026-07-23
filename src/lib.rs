@@ -664,3 +664,35 @@ pub trait IdempotencyKey {
     /// Returns the idempotency key for this command.
     fn idempotency_key(&self) -> &str;
 }
+
+/// Implemented by commands that declare which events are relevant to deciding them.
+///
+/// Used by [`EventRepository`](crate::EventRepository) implementations backed by a
+/// Dynamic Consistency Boundary (DCB) event store: instead of fetching a single fixed
+/// stream, the repository loads exactly the events matching the query tuples this method
+/// returns, then folds them through the decider before computing new events. This mirrors
+/// how [`EventMeta::tags`] lets events declare their own indexing tags — here the command
+/// declares which of those tags identify the events it needs to see.
+///
+/// # Example
+///
+/// ```rust
+/// use fmodel_decider_rust::{CommandQueries, QueryTuple, Tag};
+///
+/// struct DepositCommand {
+///     account_id: String,
+/// }
+///
+/// impl CommandQueries for DepositCommand {
+///     fn queries(&self) -> Vec<QueryTuple> {
+///         vec![QueryTuple {
+///             event_type: "AccountEvent".to_string(),
+///             tags: vec![Tag::new("accountId", self.account_id.clone())],
+///         }]
+///     }
+/// }
+/// ```
+pub trait CommandQueries {
+    /// Returns the query tuples identifying events relevant to deciding this command.
+    fn queries(&self) -> Vec<QueryTuple>;
+}
