@@ -541,6 +541,48 @@ pub trait ProcessTrait<AR, Si, So, Ei, Eo, A>: DeciderTrait<AR, Si, So, Ei, Eo> 
     fn pending(&self, state: &Si) -> Self::Actions;
 }
 
+/// A single `key:value` tag attached to an event, used for secondary indexing.
+///
+/// Encapsulates the `"key:value"` string convention structurally instead of leaving
+/// callers to hand-format strings (e.g. `format!("id:{}", id)`), which removes the risk
+/// of malformed tags: a missing separator, or a value that itself contains a colon and
+/// breaks naive parsing downstream.
+///
+/// `Tag` implements [`std::fmt::Display`], producing the canonical `"key:value"` wire
+/// format that repository implementations index on.
+///
+/// # Example
+///
+/// ```rust
+/// use fmodel_decider_rust::Tag;
+///
+/// let tag = Tag::new("restaurantId", "123");
+/// assert_eq!(tag.to_string(), "restaurantId:123");
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Tag {
+    /// The tag's key (e.g. `"restaurantId"`).
+    pub key: String,
+    /// The tag's value (e.g. `"123"`).
+    pub value: String,
+}
+
+impl Tag {
+    /// Creates a new tag from a key and value.
+    pub fn new(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value: value.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for Tag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.key, self.value)
+    }
+}
+
 /// Trait for events that carry metadata for indexing and querying.
 ///
 /// Used by repository implementations (e.g., FoundationDB) to build secondary
@@ -556,7 +598,7 @@ pub trait ProcessTrait<AR, Si, So, Ei, Eo, A>: DeciderTrait<AR, Si, So, Ei, Eo> 
 ///
 /// ## Tags
 ///
-/// Tags are `"key:value"` strings extracted from the event's own fields. They serve
+/// Tags are [`Tag`] values extracted from the event's own fields. They serve
 /// as the basis for secondary indexing and stream identification. Repository
 /// implementations use the power set of an event's tags to build indexes that
 /// support queries by any tag combination.
@@ -564,7 +606,7 @@ pub trait ProcessTrait<AR, Si, So, Ei, Eo, A>: DeciderTrait<AR, Si, So, Ei, Eo> 
 /// ## Example
 ///
 /// ```rust
-/// use fmodel_decider_rust::EventMeta;
+/// use fmodel_decider_rust::{EventMeta, Tag};
 ///
 /// struct RestaurantCreatedEvent {
 ///     restaurant_id: String,
@@ -575,8 +617,8 @@ pub trait ProcessTrait<AR, Si, So, Ei, Eo, A>: DeciderTrait<AR, Si, So, Ei, Eo> 
 ///         "RestaurantCreatedEvent"
 ///     }
 ///
-///     fn tags(&self) -> Vec<String> {
-///         vec![format!("restaurantId:{}", self.restaurant_id)]
+///     fn tags(&self) -> Vec<Tag> {
+///         vec![Tag::new("restaurantId", self.restaurant_id.clone())]
 ///     }
 /// }
 /// ```
@@ -587,12 +629,12 @@ pub trait EventMeta {
     /// forming the first element of tag index and last event pointer keys.
     fn event_type(&self) -> &str;
 
-    /// Returns tags extracted from the event's fields in `"key:value"` format.
+    /// Returns tags extracted from the event's fields.
     ///
     /// Tags are used for secondary indexing and stream identification. Repository
     /// implementations build power set indexes over these tags to support queries
     /// by any combination.
-    fn tags(&self) -> Vec<String>;
+    fn tags(&self) -> Vec<Tag>;
 }
 
 /// Implemented by commands that carry an idempotency key.

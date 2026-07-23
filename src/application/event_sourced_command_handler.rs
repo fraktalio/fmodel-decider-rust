@@ -30,7 +30,7 @@ use crate::{EventComputationTrait, EventMeta, IdempotencyKey};
 /// **Without handler (direct repository usage):**
 /// ```rust,no_run
 /// # use std::sync::Arc;
-/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey};
+/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, Tag};
 /// # #[derive(Clone, Debug)]
 /// # enum Command { Deposit { amount: u32, idempotency_key: String } }
 /// # impl IdempotencyKey for Command {
@@ -48,7 +48,7 @@ use crate::{EventComputationTrait, EventMeta, IdempotencyKey};
 /// #             Event::Deposited(_) => "Deposited",
 /// #         }
 /// #     }
-/// #     fn tags(&self) -> Vec<String> {
+/// #     fn tags(&self) -> Vec<Tag> {
 /// #         Vec::new()
 /// #     }
 /// # }
@@ -91,7 +91,7 @@ use crate::{EventComputationTrait, EventMeta, IdempotencyKey};
 /// **With handler:**
 /// ```rust,no_run
 /// # use std::sync::Arc;
-/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey};
+/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, Tag};
 /// # #[derive(Clone, Debug)]
 /// # enum Command { Deposit { amount: u32, idempotency_key: String } }
 /// # impl IdempotencyKey for Command {
@@ -109,7 +109,7 @@ use crate::{EventComputationTrait, EventMeta, IdempotencyKey};
 /// #             Event::Deposited(_) => "Deposited",
 /// #         }
 /// #     }
-/// #     fn tags(&self) -> Vec<String> {
+/// #     fn tags(&self) -> Vec<Tag> {
 /// #         Vec::new()
 /// #     }
 /// # }
@@ -199,7 +199,7 @@ use crate::{EventComputationTrait, EventMeta, IdempotencyKey};
 ///
 /// ```rust,no_run
 /// use std::sync::Arc;
-/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey};
+/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, Tag};
 /// # #[derive(Clone, Debug)]
 /// # enum Command {
 /// #     OpenAccount { id: String, idempotency_key: String },
@@ -222,10 +222,10 @@ use crate::{EventComputationTrait, EventMeta, IdempotencyKey};
 /// #             Event::MoneyDeposited { .. } => "MoneyDeposited",
 /// #         }
 /// #     }
-/// #     fn tags(&self) -> Vec<String> {
+/// #     fn tags(&self) -> Vec<Tag> {
 /// #         match self {
-/// #             Event::AccountOpened { id } => vec![format!("id:{id}")],
-/// #             Event::MoneyDeposited { id, .. } => vec![format!("id:{id}")],
+/// #             Event::AccountOpened { id } => vec![Tag::new("id", id.clone())],
+/// #             Event::MoneyDeposited { id, .. } => vec![Tag::new("id", id.clone())],
 /// #         }
 /// #     }
 /// # }
@@ -349,7 +349,7 @@ where
     ///
     /// ```rust,no_run
     /// use std::sync::Arc;
-    /// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey};
+    /// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, Tag};
     /// # #[derive(Clone, Debug)]
     /// # enum Command { Deposit { amount: u32, idempotency_key: String } }
     /// # impl IdempotencyKey for Command {
@@ -367,7 +367,7 @@ where
     /// #             Event::Deposited(_) => "Deposited",
     /// #         }
     /// #     }
-    /// #     fn tags(&self) -> Vec<String> {
+    /// #     fn tags(&self) -> Vec<Tag> {
     /// #         Vec::new()
     /// #     }
     /// # }
@@ -455,7 +455,7 @@ where
     ///
     /// ```rust,no_run
     /// # use std::sync::Arc;
-    /// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey};
+    /// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, Tag};
     /// # #[derive(Clone, Debug)]
     /// # enum Command {
     /// #     Deposit { amount: u32, idempotency_key: String },
@@ -478,7 +478,7 @@ where
     /// #             Event::Withdrawn(_) => "Withdrawn",
     /// #         }
     /// #     }
-    /// #     fn tags(&self) -> Vec<String> {
+    /// #     fn tags(&self) -> Vec<Tag> {
     /// #         Vec::new()
     /// #     }
     /// # }
@@ -599,7 +599,7 @@ where
 /// # #[cfg(feature = "single-threaded")]
 /// # {
 /// use std::rc::Rc;
-/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey};
+/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, Tag};
 /// # #[derive(Clone, Debug)]
 /// # enum Command { Deposit { amount: u32, idempotency_key: String } }
 /// # impl IdempotencyKey for Command {
@@ -617,7 +617,7 @@ where
 /// #             Event::Deposited(_) => "Deposited",
 /// #         }
 /// #     }
-/// #     fn tags(&self) -> Vec<String> {
+/// #     fn tags(&self) -> Vec<Tag> {
 /// #         Vec::new()
 /// #     }
 /// # }

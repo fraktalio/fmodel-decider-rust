@@ -1,4 +1,4 @@
-use crate::{EventMeta, ViewTrait};
+use crate::{EventMeta, Tag, ViewTrait};
 
 // ================================================================================================
 // QueryTuple - Event Query Specification
@@ -13,13 +13,14 @@ use crate::{EventMeta, ViewTrait};
 /// # Fields
 ///
 /// - `event_type`: The event type identifier (e.g., `"RestaurantCreatedEvent"`)
-/// - `tags`: Tags to filter by, in `"key:value"` format. Empty vec queries all events of the type.
+/// - `tags`: Tags to filter by. Empty vec queries all events of the type. These are matched
+///   against the tags an event exposes via [`EventMeta::tags`].
 #[derive(Debug, Clone)]
 pub struct QueryTuple {
     /// The event type identifier to query.
     pub event_type: String,
-    /// Tags to filter by, in `"key:value"` format.
-    pub tags: Vec<String>,
+    /// Tags to filter by.
+    pub tags: Vec<Tag>,
 }
 
 // ================================================================================================

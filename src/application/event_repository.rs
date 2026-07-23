@@ -46,7 +46,7 @@ use crate::{EventComputationTrait, EventMeta, IdempotencyKey};
 /// ```rust,no_run
 /// use std::collections::HashMap;
 /// use std::sync::{Arc, Mutex};
-/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey};
+/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, Tag};
 ///
 /// # #[derive(Clone, Debug)]
 /// # enum Command { OpenAccount { id: String, idempotency_key: String } }
@@ -65,9 +65,9 @@ use crate::{EventComputationTrait, EventMeta, IdempotencyKey};
 /// #             Event::AccountOpened { .. } => "AccountOpened",
 /// #         }
 /// #     }
-/// #     fn tags(&self) -> Vec<String> {
+/// #     fn tags(&self) -> Vec<Tag> {
 /// #         match self {
-/// #             Event::AccountOpened { id } => vec![format!("id:{id}")],
+/// #             Event::AccountOpened { id } => vec![Tag::new("id", id.clone())],
 /// #         }
 /// #     }
 /// # }
@@ -225,7 +225,7 @@ where
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey};
+    /// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, Tag};
     /// # #[derive(Clone, Debug)]
     /// # enum Command { Deposit { amount: u32, idempotency_key: String } }
     /// # impl IdempotencyKey for Command {
@@ -243,7 +243,7 @@ where
     /// #             Event::Deposited(_) => "Deposited",
     /// #         }
     /// #     }
-    /// #     fn tags(&self) -> Vec<String> {
+    /// #     fn tags(&self) -> Vec<Tag> {
     /// #         Vec::new()
     /// #     }
     /// # }
@@ -372,7 +372,7 @@ where
 /// use std::rc::Rc;
 /// use std::cell::RefCell;
 /// use std::collections::HashMap;
-/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey};
+/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, Tag};
 ///
 /// # #[derive(Clone, Debug)]
 /// # enum Command { Deposit { amount: u32, idempotency_key: String } }
@@ -391,7 +391,7 @@ where
 /// #             Event::Deposited(_) => "Deposited",
 /// #         }
 /// #     }
-/// #     fn tags(&self) -> Vec<String> {
+/// #     fn tags(&self) -> Vec<Tag> {
 /// #         Vec::new()
 /// #     }
 /// # }

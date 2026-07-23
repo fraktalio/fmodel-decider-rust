@@ -29,7 +29,7 @@ use crate::{EventMeta, ViewTrait};
 /// **Without handler (direct repository usage):**
 /// ```rust,no_run
 /// # use std::sync::Arc;
-/// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta};
+/// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta, Tag};
 /// # #[derive(Clone, Debug)]
 /// # enum Event { ItemAdded(String), ItemRemoved(String) }
 /// # impl EventMeta for Event {
@@ -39,10 +39,10 @@ use crate::{EventMeta, ViewTrait};
 /// #             Event::ItemRemoved(_) => "ItemRemoved",
 /// #         }
 /// #     }
-/// #     fn tags(&self) -> Vec<String> {
+/// #     fn tags(&self) -> Vec<Tag> {
 /// #         match self {
-/// #             Event::ItemAdded(item) => vec![format!("item:{item}")],
-/// #             Event::ItemRemoved(item) => vec![format!("item:{item}")],
+/// #             Event::ItemAdded(item) => vec![Tag::new("item", item.clone())],
+/// #             Event::ItemRemoved(item) => vec![Tag::new("item", item.clone())],
 /// #         }
 /// #     }
 /// # }
@@ -82,7 +82,7 @@ use crate::{EventMeta, ViewTrait};
 /// **With handler:**
 /// ```rust,no_run
 /// # use std::sync::Arc;
-/// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta};
+/// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta, Tag};
 /// # #[derive(Clone, Debug)]
 /// # enum Event { ItemAdded(String), ItemRemoved(String) }
 /// # impl EventMeta for Event {
@@ -92,10 +92,10 @@ use crate::{EventMeta, ViewTrait};
 /// #             Event::ItemRemoved(_) => "ItemRemoved",
 /// #         }
 /// #     }
-/// #     fn tags(&self) -> Vec<String> {
+/// #     fn tags(&self) -> Vec<Tag> {
 /// #         match self {
-/// #             Event::ItemAdded(item) => vec![format!("item:{item}")],
-/// #             Event::ItemRemoved(item) => vec![format!("item:{item}")],
+/// #             Event::ItemAdded(item) => vec![Tag::new("item", item.clone())],
+/// #             Event::ItemRemoved(item) => vec![Tag::new("item", item.clone())],
 /// #         }
 /// #     }
 /// # }
@@ -178,7 +178,7 @@ use crate::{EventMeta, ViewTrait};
 ///
 /// ```rust,no_run
 /// use std::sync::Arc;
-/// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta};
+/// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta, Tag};
 /// # #[derive(Clone, Debug)]
 /// # enum Event { AccountOpened { id: String }, MoneyDeposited { id: String, amount: u32 }, MoneyWithdrawn { id: String, amount: u32 } }
 /// # impl EventMeta for Event {
@@ -189,11 +189,11 @@ use crate::{EventMeta, ViewTrait};
 /// #             Event::MoneyWithdrawn { .. } => "MoneyWithdrawn",
 /// #         }
 /// #     }
-/// #     fn tags(&self) -> Vec<String> {
+/// #     fn tags(&self) -> Vec<Tag> {
 /// #         match self {
-/// #             Event::AccountOpened { id } => vec![format!("id:{id}")],
-/// #             Event::MoneyDeposited { id, .. } => vec![format!("id:{id}")],
-/// #             Event::MoneyWithdrawn { id, .. } => vec![format!("id:{id}")],
+/// #             Event::AccountOpened { id } => vec![Tag::new("id", id.clone())],
+/// #             Event::MoneyDeposited { id, .. } => vec![Tag::new("id", id.clone())],
+/// #             Event::MoneyWithdrawn { id, .. } => vec![Tag::new("id", id.clone())],
 /// #         }
 /// #     }
 /// # }
@@ -309,7 +309,7 @@ where
     ///
     /// ```rust,no_run
     /// use std::sync::Arc;
-    /// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta};
+    /// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta, Tag};
     /// # #[derive(Clone, Debug)]
     /// # enum Event { ItemAdded(String) }
     /// # impl EventMeta for Event {
@@ -318,9 +318,9 @@ where
     /// #             Event::ItemAdded(_) => "ItemAdded",
     /// #         }
     /// #     }
-    /// #     fn tags(&self) -> Vec<String> {
+    /// #     fn tags(&self) -> Vec<Tag> {
     /// #         match self {
-    /// #             Event::ItemAdded(item) => vec![format!("item:{item}")],
+    /// #             Event::ItemAdded(item) => vec![Tag::new("item", item.clone())],
     /// #         }
     /// #     }
     /// # }
@@ -407,7 +407,7 @@ where
     ///
     /// ```rust,no_run
     /// # use std::sync::Arc;
-    /// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta};
+    /// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta, Tag};
     /// # #[derive(Clone, Debug)]
     /// # enum Event { ItemAdded(String), ItemRemoved(String) }
     /// # impl EventMeta for Event {
@@ -417,10 +417,10 @@ where
     /// #             Event::ItemRemoved(_) => "ItemRemoved",
     /// #         }
     /// #     }
-    /// #     fn tags(&self) -> Vec<String> {
+    /// #     fn tags(&self) -> Vec<Tag> {
     /// #         match self {
-    /// #             Event::ItemAdded(item) => vec![format!("item:{item}")],
-    /// #             Event::ItemRemoved(item) => vec![format!("item:{item}")],
+    /// #             Event::ItemAdded(item) => vec![Tag::new("item", item.clone())],
+    /// #             Event::ItemRemoved(item) => vec![Tag::new("item", item.clone())],
     /// #         }
     /// #     }
     /// # }
@@ -531,7 +531,7 @@ where
 /// # #[cfg(feature = "single-threaded")]
 /// # {
 /// use std::rc::Rc;
-/// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta};
+/// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta, Tag};
 /// # #[derive(Clone, Debug)]
 /// # enum Event { ItemAdded(String) }
 /// # impl EventMeta for Event {
@@ -540,9 +540,9 @@ where
 /// #             Event::ItemAdded(_) => "ItemAdded",
 /// #         }
 /// #     }
-/// #     fn tags(&self) -> Vec<String> {
+/// #     fn tags(&self) -> Vec<Tag> {
 /// #         match self {
-/// #             Event::ItemAdded(item) => vec![format!("item:{item}")],
+/// #             Event::ItemAdded(item) => vec![Tag::new("item", item.clone())],
 /// #         }
 /// #     }
 /// # }
