@@ -1,4 +1,4 @@
-use crate::StateComputationTrait;
+use crate::{IdempotencyKey, StateComputationTrait};
 
 // ================================================================================================
 // StateRepository Trait
@@ -12,7 +12,8 @@ use crate::StateComputationTrait;
 ///
 /// # Type Parameters
 ///
-/// - `C`: Command type that triggers state changes
+/// - `C`: Command type that triggers state changes. Must implement [`IdempotencyKey`] so
+///   repository implementations can deduplicate retried commands.
 /// - `S`: State type (both current and new state)
 ///
 /// # Associated Types
@@ -50,10 +51,21 @@ use crate::StateComputationTrait;
 /// ```rust,no_run
 /// use std::collections::HashMap;
 /// use std::sync::{Arc, Mutex};
-/// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider};
+/// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider, IdempotencyKey};
 ///
 /// # #[derive(Clone, Debug)]
-/// # enum Command { Increment, Decrement }
+/// # enum Command {
+/// #     Increment { idempotency_key: String },
+/// #     Decrement { idempotency_key: String },
+/// # }
+/// # impl IdempotencyKey for Command {
+/// #     fn idempotency_key(&self) -> &str {
+/// #         match self {
+/// #             Command::Increment { idempotency_key } => idempotency_key,
+/// #             Command::Decrement { idempotency_key } => idempotency_key,
+/// #         }
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug, Default)]
 /// # struct State { count: i32 }
 ///
@@ -63,7 +75,10 @@ use crate::StateComputationTrait;
 /// }
 ///
 /// # #[cfg(not(feature = "single-threaded"))]
-/// # trait StateRepository<C, S>: Send + Sync {
+/// # trait StateRepository<C, S>: Send + Sync
+/// # where
+/// #     C: IdempotencyKey,
+/// # {
 /// #     type Error;
 /// #     async fn execute<D>(&self, command: C, component: &D) -> Result<S, Self::Error>
 /// #     where D: StateComputationTrait<C, S> + Send + Sync, D::Error: std::fmt::Debug;
@@ -104,8 +119,8 @@ use crate::StateComputationTrait;
 /// # let component = AggregateDecider::new(
 /// #     |c: &Command, _s: &State| -> Result<Vec<()>, String> {
 /// #         match c {
-/// #             Command::Increment => Ok(vec![()]),
-/// #             Command::Decrement => Ok(vec![()]),
+/// #             Command::Increment { .. } => Ok(vec![()]),
+/// #             Command::Decrement { .. } => Ok(vec![()]),
 /// #         }
 /// #     },
 /// #     |s: &State, _e: &()| s.clone(),
@@ -114,7 +129,7 @@ use crate::StateComputationTrait;
 /// # let repository = InMemoryStateRepository {
 /// #     states: Arc::new(Mutex::new(HashMap::new())),
 /// # };
-/// let command = Command::Increment;
+/// let command = Command::Increment { idempotency_key: "req-1".to_string() };
 ///
 /// // Execute command through repository
 /// let state = repository.execute(command, &component).await?;
@@ -144,7 +159,10 @@ use crate::StateComputationTrait;
 /// }
 /// ```
 #[cfg(not(feature = "single-threaded"))]
-pub trait StateRepository<C, S>: Send + Sync {
+pub trait StateRepository<C, S>: Send + Sync
+where
+    C: IdempotencyKey,
+{
     /// Error type for repository operations.
     ///
     /// This should capture both infrastructure errors (fetch/save failures) and domain
@@ -180,17 +198,33 @@ pub trait StateRepository<C, S>: Send + Sync {
     /// persisted. The exact mechanism depends on the underlying storage (transactions,
     /// optimistic locking, etc.).
     ///
+    /// # Idempotency
+    ///
+    /// Implementations should use `command.idempotency_key()` to detect retried commands:
+    /// when a command with a previously seen key is executed again, the original persisted
+    /// state should be returned without re-running the component.
+    ///
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider};
+    /// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider, IdempotencyKey};
     /// # #[derive(Clone, Debug)]
-    /// # enum Command { SetValue(i32) }
+    /// # enum Command { SetValue { value: i32, idempotency_key: String } }
+    /// # impl IdempotencyKey for Command {
+    /// #     fn idempotency_key(&self) -> &str {
+    /// #         match self {
+    /// #             Command::SetValue { idempotency_key, .. } => idempotency_key,
+    /// #         }
+    /// #     }
+    /// # }
     /// # #[derive(Clone, Debug, Default)]
     /// # struct State { value: i32 }
     /// # struct MyRepository;
     /// # #[cfg(not(feature = "single-threaded"))]
-    /// # trait StateRepository<C, S>: Send + Sync {
+    /// # trait StateRepository<C, S>: Send + Sync
+    /// # where
+    /// #     C: IdempotencyKey,
+    /// # {
     /// #     type Error;
     /// #     async fn execute<D>(&self, command: C, component: &D) -> Result<S, Self::Error>
     /// #     where D: StateComputationTrait<C, S> + Send + Sync;
@@ -209,7 +243,7 @@ pub trait StateRepository<C, S>: Send + Sync {
     /// #     |s: &State, _e: &()| s.clone(),
     /// #     || State::default(),
     /// # );
-    /// let command = Command::SetValue(42);
+    /// let command = Command::SetValue { value: 42, idempotency_key: "req-1".to_string() };
     /// let state = repository.execute(command, &component).await?;
     /// # Ok(())
     /// # }
@@ -238,6 +272,12 @@ pub trait StateRepository<C, S>: Send + Sync {
     /// Implementations should treat the batch as a single unit of work: either all commands
     /// succeed and the resulting state is persisted, or none are. The exact mechanism depends
     /// on the underlying storage (transactions, optimistic locking, etc.).
+    ///
+    /// # Idempotency
+    ///
+    /// As with [`execute`](Self::execute), implementations should use each command's
+    /// `idempotency_key()` to detect and skip re-running previously handled commands within
+    /// the batch.
     ///
     /// # Empty batch
     ///
@@ -295,10 +335,17 @@ pub trait StateRepository<C, S>: Send + Sync {
 /// use std::rc::Rc;
 /// use std::cell::RefCell;
 /// use std::collections::HashMap;
-/// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider};
+/// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider, IdempotencyKey};
 ///
 /// # #[derive(Clone, Debug)]
-/// # enum Command { Increment }
+/// # enum Command { Increment { idempotency_key: String } }
+/// # impl IdempotencyKey for Command {
+/// #     fn idempotency_key(&self) -> &str {
+/// #         match self {
+/// #             Command::Increment { idempotency_key } => idempotency_key,
+/// #         }
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug, Default)]
 /// # struct State { count: i32 }
 ///
@@ -307,7 +354,10 @@ pub trait StateRepository<C, S>: Send + Sync {
 ///     states: Rc<RefCell<HashMap<String, State>>>,
 /// }
 ///
-/// # trait StateRepository<C, S> {
+/// # trait StateRepository<C, S>
+/// # where
+/// #     C: IdempotencyKey,
+/// # {
 /// #     type Error;
 /// #     async fn execute<D>(&self, command: C, component: &D) -> Result<S, Self::Error>
 /// #     where D: StateComputationTrait<C, S>;
@@ -331,7 +381,10 @@ pub trait StateRepository<C, S>: Send + Sync {
 /// # }
 /// ```
 #[cfg(feature = "single-threaded")]
-pub trait StateRepository<C, S> {
+pub trait StateRepository<C, S>
+where
+    C: IdempotencyKey,
+{
     /// Error type for repository operations.
     type Error;
 

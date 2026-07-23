@@ -1,4 +1,4 @@
-use crate::ViewTrait;
+use crate::{EventMeta, ViewTrait};
 
 // ================================================================================================
 // QueryTuple - Event Query Specification
@@ -36,9 +36,13 @@ pub struct QueryTuple {
 ///
 /// # Type Parameters
 ///
-/// - `E`: Event type to load
+/// - `E`: Event type to load. Must implement [`EventMeta`], since `QueryTuple` queries by
+///   the exact `event_type`/`tags` shape `EventMeta` produces.
 #[cfg(not(feature = "single-threaded"))]
-pub trait EventLoader<E>: Send + Sync {
+pub trait EventLoader<E>: Send + Sync
+where
+    E: EventMeta,
+{
     /// Error type for load operations.
     type Error;
 
@@ -53,7 +57,10 @@ pub trait EventLoader<E>: Send + Sync {
 ///
 /// See the multi-threaded `EventLoader` documentation for details.
 #[cfg(feature = "single-threaded")]
-pub trait EventLoader<E> {
+pub trait EventLoader<E>
+where
+    E: EventMeta,
+{
     /// Error type for load operations.
     type Error;
 
@@ -85,6 +92,7 @@ pub trait EventLoader<E> {
 #[cfg(not(feature = "single-threaded"))]
 pub struct EventSourcedQueryHandler<E, S, V, L>
 where
+    E: EventMeta,
     V: ViewTrait<S, S, E> + Send + Sync,
     L: EventLoader<E> + Send + Sync,
 {
@@ -96,6 +104,7 @@ where
 #[cfg(not(feature = "single-threaded"))]
 impl<E, S, V, L> EventSourcedQueryHandler<E, S, V, L>
 where
+    E: EventMeta,
     V: ViewTrait<S, S, E> + Send + Sync,
     L: EventLoader<E> + Send + Sync,
 {
@@ -148,6 +157,7 @@ where
 #[cfg(feature = "single-threaded")]
 pub struct EventSourcedQueryHandler<E, S, V, L>
 where
+    E: EventMeta,
     V: ViewTrait<S, S, E>,
     L: EventLoader<E>,
 {
@@ -159,6 +169,7 @@ where
 #[cfg(feature = "single-threaded")]
 impl<E, S, V, L> EventSourcedQueryHandler<E, S, V, L>
 where
+    E: EventMeta,
     V: ViewTrait<S, S, E>,
     L: EventLoader<E>,
 {

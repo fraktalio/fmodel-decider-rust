@@ -1,5 +1,5 @@
 use super::state_repository::StateRepository;
-use crate::StateComputationTrait;
+use crate::{IdempotencyKey, StateComputationTrait};
 
 // ================================================================================================
 // StateStoredCommandHandler - Convenience Layer
@@ -13,7 +13,7 @@ use crate::StateComputationTrait;
 ///
 /// # Type Parameters
 ///
-/// - `C`: Command type that triggers state changes
+/// - `C`: Command type that triggers state changes. Must implement [`IdempotencyKey`].
 /// - `S`: State type (both current and new state)
 /// - `D`: The decider implementing `StateComputationTrait<C, S>`
 /// - `R`: The repository implementing `StateRepository<C, S>`
@@ -29,14 +29,28 @@ use crate::StateComputationTrait;
 /// **Without handler (direct repository usage):**
 /// ```rust,no_run
 /// # use std::sync::Arc;
-/// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider};
+/// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider, IdempotencyKey};
 /// # #[derive(Clone, Debug)]
-/// # enum Command { Increment, Decrement }
+/// # enum Command {
+/// #     Increment { idempotency_key: String },
+/// #     Decrement { idempotency_key: String },
+/// # }
+/// # impl IdempotencyKey for Command {
+/// #     fn idempotency_key(&self) -> &str {
+/// #         match self {
+/// #             Command::Increment { idempotency_key } => idempotency_key,
+/// #             Command::Decrement { idempotency_key } => idempotency_key,
+/// #         }
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug, Default)]
 /// # struct State { count: i32 }
 /// # struct MyRepository;
 /// # #[cfg(not(feature = "single-threaded"))]
-/// # trait StateRepository<C, S>: Send + Sync {
+/// # trait StateRepository<C, S>: Send + Sync
+/// # where
+/// #     C: IdempotencyKey,
+/// # {
 /// #     type Error;
 /// #     async fn execute<D>(&self, command: C, component: &D) -> Result<S, Self::Error>
 /// #     where D: StateComputationTrait<C, S> + Send + Sync;
@@ -56,9 +70,9 @@ use crate::StateComputationTrait;
 /// # );
 /// # let repository = Arc::new(MyRepository);
 /// // Must pass component on every call
-/// let state1 = repository.execute(Command::Increment, &component).await?;
-/// let state2 = repository.execute(Command::Increment, &component).await?;
-/// let state3 = repository.execute(Command::Decrement, &component).await?;
+/// let state1 = repository.execute(Command::Increment { idempotency_key: "req-1".to_string() }, &component).await?;
+/// let state2 = repository.execute(Command::Increment { idempotency_key: "req-2".to_string() }, &component).await?;
+/// let state3 = repository.execute(Command::Decrement { idempotency_key: "req-3".to_string() }, &component).await?;
 /// # Ok(())
 /// # }
 /// ```
@@ -66,14 +80,28 @@ use crate::StateComputationTrait;
 /// **With handler:**
 /// ```rust,no_run
 /// # use std::sync::Arc;
-/// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider};
+/// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider, IdempotencyKey};
 /// # #[derive(Clone, Debug)]
-/// # enum Command { Increment, Decrement }
+/// # enum Command {
+/// #     Increment { idempotency_key: String },
+/// #     Decrement { idempotency_key: String },
+/// # }
+/// # impl IdempotencyKey for Command {
+/// #     fn idempotency_key(&self) -> &str {
+/// #         match self {
+/// #             Command::Increment { idempotency_key } => idempotency_key,
+/// #             Command::Decrement { idempotency_key } => idempotency_key,
+/// #         }
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug, Default)]
 /// # struct State { count: i32 }
 /// # struct MyRepository;
 /// # #[cfg(not(feature = "single-threaded"))]
-/// # trait StateRepository<C, S>: Send + Sync {
+/// # trait StateRepository<C, S>: Send + Sync
+/// # where
+/// #     C: IdempotencyKey,
+/// # {
 /// #     type Error;
 /// #     async fn execute<D>(&self, command: C, component: &D) -> Result<S, Self::Error>
 /// #     where D: StateComputationTrait<C, S> + Send + Sync;
@@ -89,6 +117,7 @@ use crate::StateComputationTrait;
 /// # #[cfg(not(feature = "single-threaded"))]
 /// # struct StateStoredCommandHandler<C, S, D, R>
 /// # where
+/// #     C: IdempotencyKey,
 /// #     D: StateComputationTrait<C, S> + Send + Sync,
 /// #     R: StateRepository<C, S> + Send + Sync,
 /// # {
@@ -99,6 +128,7 @@ use crate::StateComputationTrait;
 /// # #[cfg(not(feature = "single-threaded"))]
 /// # impl<C, S, D, R> StateStoredCommandHandler<C, S, D, R>
 /// # where
+/// #     C: IdempotencyKey,
 /// #     D: StateComputationTrait<C, S> + Send + Sync,
 /// #     R: StateRepository<C, S> + Send + Sync,
 /// # {
@@ -118,9 +148,9 @@ use crate::StateComputationTrait;
 /// # let repository = Arc::new(MyRepository);
 /// // Component encapsulated in handler
 /// let handler = StateStoredCommandHandler::new(component, repository);
-/// let state1 = handler.handle(Command::Increment).await?;
-/// let state2 = handler.handle(Command::Increment).await?;
-/// let state3 = handler.handle(Command::Decrement).await?;
+/// let state1 = handler.handle(Command::Increment { idempotency_key: "req-1".to_string() }).await?;
+/// let state2 = handler.handle(Command::Increment { idempotency_key: "req-2".to_string() }).await?;
+/// let state3 = handler.handle(Command::Decrement { idempotency_key: "req-3".to_string() }).await?;
 /// # Ok(())
 /// # }
 /// ```
@@ -144,14 +174,30 @@ use crate::StateComputationTrait;
 ///
 /// ```rust,no_run
 /// use std::sync::Arc;
-/// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider};
+/// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider, IdempotencyKey};
 /// # #[derive(Clone, Debug)]
-/// # enum Command { Increment, Decrement, Reset }
+/// # enum Command {
+/// #     Increment { idempotency_key: String },
+/// #     Decrement { idempotency_key: String },
+/// #     Reset { idempotency_key: String },
+/// # }
+/// # impl IdempotencyKey for Command {
+/// #     fn idempotency_key(&self) -> &str {
+/// #         match self {
+/// #             Command::Increment { idempotency_key } => idempotency_key,
+/// #             Command::Decrement { idempotency_key } => idempotency_key,
+/// #             Command::Reset { idempotency_key } => idempotency_key,
+/// #         }
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug, Default)]
 /// # struct State { count: i32 }
 /// # struct MyRepository;
 /// # #[cfg(not(feature = "single-threaded"))]
-/// # trait StateRepository<C, S>: Send + Sync {
+/// # trait StateRepository<C, S>: Send + Sync
+/// # where
+/// #     C: IdempotencyKey,
+/// # {
 /// #     type Error;
 /// #     async fn execute<D>(&self, command: C, component: &D) -> Result<S, Self::Error>
 /// #     where D: StateComputationTrait<C, S> + Send + Sync;
@@ -167,6 +213,7 @@ use crate::StateComputationTrait;
 /// # #[cfg(not(feature = "single-threaded"))]
 /// # struct StateStoredCommandHandler<C, S, D, R>
 /// # where
+/// #     C: IdempotencyKey,
 /// #     D: StateComputationTrait<C, S> + Send + Sync,
 /// #     R: StateRepository<C, S> + Send + Sync,
 /// # {
@@ -177,6 +224,7 @@ use crate::StateComputationTrait;
 /// # #[cfg(not(feature = "single-threaded"))]
 /// # impl<C, S, D, R> StateStoredCommandHandler<C, S, D, R>
 /// # where
+/// #     C: IdempotencyKey,
 /// #     D: StateComputationTrait<C, S> + Send + Sync,
 /// #     R: StateRepository<C, S> + Send + Sync,
 /// # {
@@ -193,9 +241,9 @@ use crate::StateComputationTrait;
 /// let component = Arc::new(AggregateDecider::new(
 ///     |c: &Command, _s: &State| -> Result<Vec<()>, String> {
 ///         match c {
-///             Command::Increment => Ok(vec![()]),
-///             Command::Decrement => Ok(vec![()]),
-///             Command::Reset => Ok(vec![()]),
+///             Command::Increment { .. } => Ok(vec![()]),
+///             Command::Decrement { .. } => Ok(vec![()]),
+///             Command::Reset { .. } => Ok(vec![()]),
 ///         }
 ///     },
 ///     |s: &State, _e: &()| {
@@ -211,15 +259,16 @@ use crate::StateComputationTrait;
 /// let handler = StateStoredCommandHandler::new(component, repository);
 ///
 /// // Handle commands without passing component each time
-/// let state = handler.handle(Command::Increment).await?;
-/// let state = handler.handle(Command::Increment).await?;
-/// let state = handler.handle(Command::Decrement).await?;
+/// let state = handler.handle(Command::Increment { idempotency_key: "req-1".to_string() }).await?;
+/// let state = handler.handle(Command::Increment { idempotency_key: "req-2".to_string() }).await?;
+/// let state = handler.handle(Command::Decrement { idempotency_key: "req-3".to_string() }).await?;
 /// # Ok(())
 /// # }
 /// ```
 #[cfg(not(feature = "single-threaded"))]
 pub struct StateStoredCommandHandler<C, S, D, R>
 where
+    C: IdempotencyKey,
     D: StateComputationTrait<C, S> + Send + Sync,
     R: StateRepository<C, S> + Send + Sync,
 {
@@ -231,6 +280,7 @@ where
 #[cfg(not(feature = "single-threaded"))]
 impl<C, S, D, R> StateStoredCommandHandler<C, S, D, R>
 where
+    C: IdempotencyKey,
     D: StateComputationTrait<C, S> + Send + Sync,
     R: StateRepository<C, S> + Send + Sync,
 {
@@ -249,14 +299,24 @@ where
     ///
     /// ```rust,no_run
     /// use std::sync::Arc;
-    /// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider};
+    /// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider, IdempotencyKey};
     /// # #[derive(Clone, Debug)]
-    /// # enum Command { Increment }
+    /// # enum Command { Increment { idempotency_key: String } }
+    /// # impl IdempotencyKey for Command {
+    /// #     fn idempotency_key(&self) -> &str {
+    /// #         match self {
+    /// #             Command::Increment { idempotency_key } => idempotency_key,
+    /// #         }
+    /// #     }
+    /// # }
     /// # #[derive(Clone, Debug, Default)]
     /// # struct State { count: i32 }
     /// # struct MyRepository;
     /// # #[cfg(not(feature = "single-threaded"))]
-    /// # trait StateRepository<C, S>: Send + Sync {
+    /// # trait StateRepository<C, S>: Send + Sync
+    /// # where
+    /// #     C: IdempotencyKey,
+    /// # {
     /// #     type Error;
     /// #     async fn execute<D>(&self, command: C, component: &D) -> Result<S, Self::Error>
     /// #     where D: StateComputationTrait<C, S> + Send + Sync;
@@ -272,6 +332,7 @@ where
     /// # #[cfg(not(feature = "single-threaded"))]
     /// # struct StateStoredCommandHandler<C, S, D, R>
     /// # where
+    /// #     C: IdempotencyKey,
     /// #     D: StateComputationTrait<C, S> + Send + Sync,
     /// #     R: StateRepository<C, S> + Send + Sync,
     /// # {
@@ -282,6 +343,7 @@ where
     /// # #[cfg(not(feature = "single-threaded"))]
     /// # impl<C, S, D, R> StateStoredCommandHandler<C, S, D, R>
     /// # where
+    /// #     C: IdempotencyKey,
     /// #     D: StateComputationTrait<C, S> + Send + Sync,
     /// #     R: StateRepository<C, S> + Send + Sync,
     /// # {
@@ -325,14 +387,28 @@ where
     ///
     /// ```rust,no_run
     /// # use std::sync::Arc;
-    /// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider};
+    /// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider, IdempotencyKey};
     /// # #[derive(Clone, Debug)]
-    /// # enum Command { Increment, Decrement }
+    /// # enum Command {
+    /// #     Increment { idempotency_key: String },
+    /// #     Decrement { idempotency_key: String },
+    /// # }
+    /// # impl IdempotencyKey for Command {
+    /// #     fn idempotency_key(&self) -> &str {
+    /// #         match self {
+    /// #             Command::Increment { idempotency_key } => idempotency_key,
+    /// #             Command::Decrement { idempotency_key } => idempotency_key,
+    /// #         }
+    /// #     }
+    /// # }
     /// # #[derive(Clone, Debug, Default)]
     /// # struct State { count: i32 }
     /// # struct MyRepository;
     /// # #[cfg(not(feature = "single-threaded"))]
-    /// # trait StateRepository<C, S>: Send + Sync {
+    /// # trait StateRepository<C, S>: Send + Sync
+    /// # where
+    /// #     C: IdempotencyKey,
+    /// # {
     /// #     type Error;
     /// #     async fn execute<D>(&self, command: C, component: &D) -> Result<S, Self::Error>
     /// #     where D: StateComputationTrait<C, S> + Send + Sync;
@@ -348,6 +424,7 @@ where
     /// # #[cfg(not(feature = "single-threaded"))]
     /// # struct StateStoredCommandHandler<C, S, D, R>
     /// # where
+    /// #     C: IdempotencyKey,
     /// #     D: StateComputationTrait<C, S> + Send + Sync,
     /// #     R: StateRepository<C, S> + Send + Sync,
     /// # {
@@ -358,6 +435,7 @@ where
     /// # #[cfg(not(feature = "single-threaded"))]
     /// # impl<C, S, D, R> StateStoredCommandHandler<C, S, D, R>
     /// # where
+    /// #     C: IdempotencyKey,
     /// #     D: StateComputationTrait<C, S> + Send + Sync,
     /// #     R: StateRepository<C, S> + Send + Sync,
     /// # {
@@ -377,9 +455,9 @@ where
     /// # let repository = Arc::new(MyRepository);
     /// # let handler = StateStoredCommandHandler::new(component, repository);
     /// // Handle multiple commands
-    /// let state1 = handler.handle(Command::Increment).await?;
-    /// let state2 = handler.handle(Command::Increment).await?;
-    /// let state3 = handler.handle(Command::Decrement).await?;
+    /// let state1 = handler.handle(Command::Increment { idempotency_key: "req-1".to_string() }).await?;
+    /// let state2 = handler.handle(Command::Increment { idempotency_key: "req-2".to_string() }).await?;
+    /// let state3 = handler.handle(Command::Decrement { idempotency_key: "req-3".to_string() }).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -433,13 +511,23 @@ where
 /// # #[cfg(feature = "single-threaded")]
 /// # {
 /// use std::rc::Rc;
-/// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider};
+/// # use fmodel_decider_rust::{StateComputationTrait, AggregateDecider, IdempotencyKey};
 /// # #[derive(Clone, Debug)]
-/// # enum Command { Increment }
+/// # enum Command { Increment { idempotency_key: String } }
+/// # impl IdempotencyKey for Command {
+/// #     fn idempotency_key(&self) -> &str {
+/// #         match self {
+/// #             Command::Increment { idempotency_key } => idempotency_key,
+/// #         }
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug, Default)]
 /// # struct State { count: i32 }
 /// # struct MyRepository;
-/// # trait StateRepository<C, S> {
+/// # trait StateRepository<C, S>
+/// # where
+/// #     C: IdempotencyKey,
+/// # {
 /// #     type Error;
 /// #     async fn execute<D>(&self, command: C, component: &D) -> Result<S, Self::Error>
 /// #     where D: StateComputationTrait<C, S>;
@@ -453,6 +541,7 @@ where
 /// # use std::marker::PhantomData;
 /// # struct StateStoredCommandHandler<C, S, D, R>
 /// # where
+/// #     C: IdempotencyKey,
 /// #     D: StateComputationTrait<C, S>,
 /// #     R: StateRepository<C, S>,
 /// # {
@@ -462,6 +551,7 @@ where
 /// # }
 /// # impl<C, S, D, R> StateStoredCommandHandler<C, S, D, R>
 /// # where
+/// #     C: IdempotencyKey,
 /// #     D: StateComputationTrait<C, S>,
 /// #     R: StateRepository<C, S>,
 /// # {
@@ -487,6 +577,7 @@ where
 #[cfg(feature = "single-threaded")]
 pub struct StateStoredCommandHandler<C, S, D, R>
 where
+    C: IdempotencyKey,
     D: StateComputationTrait<C, S>,
     R: StateRepository<C, S>,
 {
@@ -498,6 +589,7 @@ where
 #[cfg(feature = "single-threaded")]
 impl<C, S, D, R> StateStoredCommandHandler<C, S, D, R>
 where
+    C: IdempotencyKey,
     D: StateComputationTrait<C, S>,
     R: StateRepository<C, S>,
 {
