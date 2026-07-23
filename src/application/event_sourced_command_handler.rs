@@ -1,5 +1,5 @@
 use super::event_repository::EventRepository;
-use crate::EventComputationTrait;
+use crate::{CommandQueries, EventComputationTrait, EventMeta, IdempotencyKey};
 
 // ================================================================================================
 // EventSourcedCommandHandler - Convenience Layer
@@ -13,9 +13,10 @@ use crate::EventComputationTrait;
 ///
 /// # Type Parameters
 ///
-/// - `C`: Command type that triggers state changes
-/// - `Ei`: Input event type (events loaded from storage)
-/// - `Eo`: Output event type (events to be persisted)
+/// - `C`: Command type that triggers state changes. Must implement [`IdempotencyKey`] and
+///   [`CommandQueries`].
+/// - `Ei`: Input event type (events loaded from storage). Must implement [`EventMeta`].
+/// - `Eo`: Output event type (events to be persisted). Must implement [`EventMeta`].
 /// - `D`: The decider implementing `EventComputationTrait<C, Ei, Eo>`
 /// - `R`: The repository implementing `EventRepository<C, Ei, Eo>`
 ///
@@ -30,16 +31,43 @@ use crate::EventComputationTrait;
 /// **Without handler (direct repository usage):**
 /// ```rust,no_run
 /// # use std::sync::Arc;
-/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider};
+/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, CommandQueries, QueryTuple, Tag};
 /// # #[derive(Clone, Debug)]
-/// # enum Command { Deposit(u32) }
+/// # enum Command { Deposit { amount: u32, idempotency_key: String } }
+/// # impl IdempotencyKey for Command {
+/// #     fn idempotency_key(&self) -> &str {
+/// #         match self {
+/// #             Command::Deposit { idempotency_key, .. } => idempotency_key,
+/// #         }
+/// #     }
+/// # }
+/// # impl CommandQueries for Command {
+/// #     fn queries(&self) -> Vec<QueryTuple> {
+/// #         Vec::new()
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug)]
 /// # enum Event { Deposited(u32) }
+/// # impl EventMeta for Event {
+/// #     fn event_type(&self) -> &str {
+/// #         match self {
+/// #             Event::Deposited(_) => "Deposited",
+/// #         }
+/// #     }
+/// #     fn tags(&self) -> Vec<Tag> {
+/// #         Vec::new()
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug, Default)]
 /// # struct State { balance: u32 }
 /// # struct MyRepository;
 /// # #[cfg(not(feature = "single-threaded"))]
-/// # trait EventRepository<C, Ei, Eo>: Send + Sync {
+/// # trait EventRepository<C, Ei, Eo>: Send + Sync
+/// # where
+/// #     C: IdempotencyKey + CommandQueries,
+/// #     Ei: EventMeta,
+/// #     Eo: EventMeta,
+/// # {
 /// #     type Error;
 /// #     async fn execute<D>(&self, command: C, decider: &D) -> Result<Vec<Eo>, Self::Error>
 /// #     where D: EventComputationTrait<C, Ei, Eo> + Send + Sync;
@@ -59,9 +87,9 @@ use crate::EventComputationTrait;
 /// # );
 /// # let repository = Arc::new(MyRepository);
 /// // Must pass decider on every call
-/// let events1 = repository.execute(Command::Deposit(100), &decider).await?;
-/// let events2 = repository.execute(Command::Deposit(200), &decider).await?;
-/// let events3 = repository.execute(Command::Deposit(300), &decider).await?;
+/// let events1 = repository.execute(Command::Deposit { amount: 100, idempotency_key: "req-1".to_string() }, &decider).await?;
+/// let events2 = repository.execute(Command::Deposit { amount: 200, idempotency_key: "req-2".to_string() }, &decider).await?;
+/// let events3 = repository.execute(Command::Deposit { amount: 300, idempotency_key: "req-3".to_string() }, &decider).await?;
 /// # Ok(())
 /// # }
 /// ```
@@ -69,16 +97,43 @@ use crate::EventComputationTrait;
 /// **With handler:**
 /// ```rust,no_run
 /// # use std::sync::Arc;
-/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider};
+/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, CommandQueries, QueryTuple, Tag};
 /// # #[derive(Clone, Debug)]
-/// # enum Command { Deposit(u32) }
+/// # enum Command { Deposit { amount: u32, idempotency_key: String } }
+/// # impl IdempotencyKey for Command {
+/// #     fn idempotency_key(&self) -> &str {
+/// #         match self {
+/// #             Command::Deposit { idempotency_key, .. } => idempotency_key,
+/// #         }
+/// #     }
+/// # }
+/// # impl CommandQueries for Command {
+/// #     fn queries(&self) -> Vec<QueryTuple> {
+/// #         Vec::new()
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug)]
 /// # enum Event { Deposited(u32) }
+/// # impl EventMeta for Event {
+/// #     fn event_type(&self) -> &str {
+/// #         match self {
+/// #             Event::Deposited(_) => "Deposited",
+/// #         }
+/// #     }
+/// #     fn tags(&self) -> Vec<Tag> {
+/// #         Vec::new()
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug, Default)]
 /// # struct State { balance: u32 }
 /// # struct MyRepository;
 /// # #[cfg(not(feature = "single-threaded"))]
-/// # trait EventRepository<C, Ei, Eo>: Send + Sync {
+/// # trait EventRepository<C, Ei, Eo>: Send + Sync
+/// # where
+/// #     C: IdempotencyKey + CommandQueries,
+/// #     Ei: EventMeta,
+/// #     Eo: EventMeta,
+/// # {
 /// #     type Error;
 /// #     async fn execute<D>(&self, command: C, decider: &D) -> Result<Vec<Eo>, Self::Error>
 /// #     where D: EventComputationTrait<C, Ei, Eo> + Send + Sync;
@@ -94,6 +149,9 @@ use crate::EventComputationTrait;
 /// # #[cfg(not(feature = "single-threaded"))]
 /// # struct EventSourcedCommandHandler<C, Ei, Eo, D, R>
 /// # where
+/// #     C: IdempotencyKey + CommandQueries,
+/// #     Ei: EventMeta,
+/// #     Eo: EventMeta,
 /// #     D: EventComputationTrait<C, Ei, Eo> + Send + Sync,
 /// #     R: EventRepository<C, Ei, Eo> + Send + Sync,
 /// # {
@@ -104,6 +162,9 @@ use crate::EventComputationTrait;
 /// # #[cfg(not(feature = "single-threaded"))]
 /// # impl<C, Ei, Eo, D, R> EventSourcedCommandHandler<C, Ei, Eo, D, R>
 /// # where
+/// #     C: IdempotencyKey + CommandQueries,
+/// #     Ei: EventMeta,
+/// #     Eo: EventMeta,
 /// #     D: EventComputationTrait<C, Ei, Eo> + Send + Sync,
 /// #     R: EventRepository<C, Ei, Eo> + Send + Sync,
 /// # {
@@ -123,9 +184,9 @@ use crate::EventComputationTrait;
 /// # let repository = Arc::new(MyRepository);
 /// // Decider encapsulated in handler
 /// let handler = EventSourcedCommandHandler::new(decider, repository);
-/// let events1 = handler.handle(Command::Deposit(100)).await?;
-/// let events2 = handler.handle(Command::Deposit(200)).await?;
-/// let events3 = handler.handle(Command::Deposit(300)).await?;
+/// let events1 = handler.handle(Command::Deposit { amount: 100, idempotency_key: "req-1".to_string() }).await?;
+/// let events2 = handler.handle(Command::Deposit { amount: 200, idempotency_key: "req-2".to_string() }).await?;
+/// let events3 = handler.handle(Command::Deposit { amount: 300, idempotency_key: "req-3".to_string() }).await?;
 /// # Ok(())
 /// # }
 /// ```
@@ -149,16 +210,60 @@ use crate::EventComputationTrait;
 ///
 /// ```rust,no_run
 /// use std::sync::Arc;
-/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider};
+/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, CommandQueries, QueryTuple, Tag};
 /// # #[derive(Clone, Debug)]
-/// # enum Command { OpenAccount { id: String }, Deposit { id: String, amount: u32 } }
+/// # enum Command {
+/// #     OpenAccount { id: String, idempotency_key: String },
+/// #     Deposit { id: String, amount: u32, idempotency_key: String },
+/// # }
+/// # impl IdempotencyKey for Command {
+/// #     fn idempotency_key(&self) -> &str {
+/// #         match self {
+/// #             Command::OpenAccount { idempotency_key, .. } => idempotency_key,
+/// #             Command::Deposit { idempotency_key, .. } => idempotency_key,
+/// #         }
+/// #     }
+/// # }
+/// # impl CommandQueries for Command {
+/// #     fn queries(&self) -> Vec<QueryTuple> {
+/// #         match self {
+/// #             Command::OpenAccount { id, .. } => vec![QueryTuple {
+/// #                 event_type: "AccountOpened".to_string(),
+/// #                 tags: vec![Tag::new("id", id.clone())],
+/// #             }],
+/// #             Command::Deposit { id, .. } => vec![QueryTuple {
+/// #                 event_type: "MoneyDeposited".to_string(),
+/// #                 tags: vec![Tag::new("id", id.clone())],
+/// #             }],
+/// #         }
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug)]
 /// # enum Event { AccountOpened { id: String }, MoneyDeposited { id: String, amount: u32 } }
+/// # impl EventMeta for Event {
+/// #     fn event_type(&self) -> &str {
+/// #         match self {
+/// #             Event::AccountOpened { .. } => "AccountOpened",
+/// #             Event::MoneyDeposited { .. } => "MoneyDeposited",
+/// #         }
+/// #     }
+/// #     fn tags(&self) -> Vec<Tag> {
+/// #         match self {
+/// #             Event::AccountOpened { id } => vec![Tag::new("id", id.clone())],
+/// #             Event::MoneyDeposited { id, .. } => vec![Tag::new("id", id.clone())],
+/// #         }
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug, Default)]
 /// # struct State { balance: u32 }
 /// # struct MyRepository;
 /// # #[cfg(not(feature = "single-threaded"))]
-/// # trait EventRepository<C, Ei, Eo>: Send + Sync {
+/// # trait EventRepository<C, Ei, Eo>: Send + Sync
+/// # where
+/// #     C: IdempotencyKey + CommandQueries,
+/// #     Ei: EventMeta,
+/// #     Eo: EventMeta,
+/// # {
 /// #     type Error;
 /// #     async fn execute<D>(&self, command: C, decider: &D) -> Result<Vec<Eo>, Self::Error>
 /// #     where D: EventComputationTrait<C, Ei, Eo> + Send + Sync;
@@ -174,6 +279,9 @@ use crate::EventComputationTrait;
 /// # #[cfg(not(feature = "single-threaded"))]
 /// # struct EventSourcedCommandHandler<C, Ei, Eo, D, R>
 /// # where
+/// #     C: IdempotencyKey + CommandQueries,
+/// #     Ei: EventMeta,
+/// #     Eo: EventMeta,
 /// #     D: EventComputationTrait<C, Ei, Eo> + Send + Sync,
 /// #     R: EventRepository<C, Ei, Eo> + Send + Sync,
 /// # {
@@ -184,6 +292,9 @@ use crate::EventComputationTrait;
 /// # #[cfg(not(feature = "single-threaded"))]
 /// # impl<C, Ei, Eo, D, R> EventSourcedCommandHandler<C, Ei, Eo, D, R>
 /// # where
+/// #     C: IdempotencyKey + CommandQueries,
+/// #     Ei: EventMeta,
+/// #     Eo: EventMeta,
 /// #     D: EventComputationTrait<C, Ei, Eo> + Send + Sync,
 /// #     R: EventRepository<C, Ei, Eo> + Send + Sync,
 /// # {
@@ -200,8 +311,8 @@ use crate::EventComputationTrait;
 /// let decider = Arc::new(AggregateDecider::new(
 ///     |c: &Command, _s: &State| -> Result<Vec<Event>, String> {
 ///         match c {
-///             Command::OpenAccount { id } => Ok(vec![Event::AccountOpened { id: id.clone() }]),
-///             Command::Deposit { id, amount } => Ok(vec![Event::MoneyDeposited { id: id.clone(), amount: *amount }]),
+///             Command::OpenAccount { id, .. } => Ok(vec![Event::AccountOpened { id: id.clone() }]),
+///             Command::Deposit { id, amount, .. } => Ok(vec![Event::MoneyDeposited { id: id.clone(), amount: *amount }]),
 ///         }
 ///     },
 ///     |s: &State, e: &Event| {
@@ -219,15 +330,18 @@ use crate::EventComputationTrait;
 /// let handler = EventSourcedCommandHandler::new(decider, repository);
 ///
 /// // Handle commands without passing decider each time
-/// let events = handler.handle(Command::OpenAccount { id: "123".to_string() }).await?;
-/// let events = handler.handle(Command::Deposit { id: "123".to_string(), amount: 100 }).await?;
-/// let events = handler.handle(Command::Deposit { id: "123".to_string(), amount: 50 }).await?;
+/// let events = handler.handle(Command::OpenAccount { id: "123".to_string(), idempotency_key: "req-1".to_string() }).await?;
+/// let events = handler.handle(Command::Deposit { id: "123".to_string(), amount: 100, idempotency_key: "req-2".to_string() }).await?;
+/// let events = handler.handle(Command::Deposit { id: "123".to_string(), amount: 50, idempotency_key: "req-3".to_string() }).await?;
 /// # Ok(())
 /// # }
 /// ```
 #[cfg(not(feature = "single-threaded"))]
 pub struct EventSourcedCommandHandler<C, Ei, Eo, D, R>
 where
+    C: IdempotencyKey + CommandQueries + Send + Sync,
+    Ei: EventMeta + Send + Sync,
+    Eo: EventMeta + Send + Sync,
     D: EventComputationTrait<C, Ei, Eo> + Send + Sync,
     R: EventRepository<C, Ei, Eo> + Send + Sync,
 {
@@ -239,6 +353,9 @@ where
 #[cfg(not(feature = "single-threaded"))]
 impl<C, Ei, Eo, D, R> EventSourcedCommandHandler<C, Ei, Eo, D, R>
 where
+    C: IdempotencyKey + CommandQueries + Send + Sync,
+    Ei: EventMeta + Send + Sync,
+    Eo: EventMeta + Send + Sync,
     D: EventComputationTrait<C, Ei, Eo> + Send + Sync,
     R: EventRepository<C, Ei, Eo> + Send + Sync,
 {
@@ -257,16 +374,43 @@ where
     ///
     /// ```rust,no_run
     /// use std::sync::Arc;
-    /// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider};
+    /// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, CommandQueries, QueryTuple, Tag};
     /// # #[derive(Clone, Debug)]
-    /// # enum Command { Deposit(u32) }
+    /// # enum Command { Deposit { amount: u32, idempotency_key: String } }
+    /// # impl IdempotencyKey for Command {
+    /// #     fn idempotency_key(&self) -> &str {
+    /// #         match self {
+    /// #             Command::Deposit { idempotency_key, .. } => idempotency_key,
+    /// #         }
+    /// #     }
+    /// # }
+    /// # impl CommandQueries for Command {
+    /// #     fn queries(&self) -> Vec<QueryTuple> {
+    /// #         Vec::new()
+    /// #     }
+    /// # }
     /// # #[derive(Clone, Debug)]
     /// # enum Event { Deposited(u32) }
+    /// # impl EventMeta for Event {
+    /// #     fn event_type(&self) -> &str {
+    /// #         match self {
+    /// #             Event::Deposited(_) => "Deposited",
+    /// #         }
+    /// #     }
+    /// #     fn tags(&self) -> Vec<Tag> {
+    /// #         Vec::new()
+    /// #     }
+    /// # }
     /// # #[derive(Clone, Debug, Default)]
     /// # struct State { balance: u32 }
     /// # struct MyRepository;
     /// # #[cfg(not(feature = "single-threaded"))]
-    /// # trait EventRepository<C, Ei, Eo>: Send + Sync {
+    /// # trait EventRepository<C, Ei, Eo>: Send + Sync
+    /// # where
+    /// #     C: IdempotencyKey + CommandQueries,
+    /// #     Ei: EventMeta,
+    /// #     Eo: EventMeta,
+    /// # {
     /// #     type Error;
     /// #     async fn execute<D>(&self, command: C, decider: &D) -> Result<Vec<Eo>, Self::Error>
     /// #     where D: EventComputationTrait<C, Ei, Eo> + Send + Sync;
@@ -282,6 +426,9 @@ where
     /// # #[cfg(not(feature = "single-threaded"))]
     /// # struct EventSourcedCommandHandler<C, Ei, Eo, D, R>
     /// # where
+    /// #     C: IdempotencyKey + CommandQueries,
+    /// #     Ei: EventMeta,
+    /// #     Eo: EventMeta,
     /// #     D: EventComputationTrait<C, Ei, Eo> + Send + Sync,
     /// #     R: EventRepository<C, Ei, Eo> + Send + Sync,
     /// # {
@@ -292,6 +439,9 @@ where
     /// # #[cfg(not(feature = "single-threaded"))]
     /// # impl<C, Ei, Eo, D, R> EventSourcedCommandHandler<C, Ei, Eo, D, R>
     /// # where
+    /// #     C: IdempotencyKey + CommandQueries,
+    /// #     Ei: EventMeta,
+    /// #     Eo: EventMeta,
     /// #     D: EventComputationTrait<C, Ei, Eo> + Send + Sync,
     /// #     R: EventRepository<C, Ei, Eo> + Send + Sync,
     /// # {
@@ -335,16 +485,48 @@ where
     ///
     /// ```rust,no_run
     /// # use std::sync::Arc;
-    /// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider};
+    /// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, CommandQueries, QueryTuple, Tag};
     /// # #[derive(Clone, Debug)]
-    /// # enum Command { Deposit(u32), Withdraw(u32) }
+    /// # enum Command {
+    /// #     Deposit { amount: u32, idempotency_key: String },
+    /// #     Withdraw { amount: u32, idempotency_key: String },
+    /// # }
+    /// # impl IdempotencyKey for Command {
+    /// #     fn idempotency_key(&self) -> &str {
+    /// #         match self {
+    /// #             Command::Deposit { idempotency_key, .. } => idempotency_key,
+    /// #             Command::Withdraw { idempotency_key, .. } => idempotency_key,
+    /// #         }
+    /// #     }
+    /// # }
+    /// # impl CommandQueries for Command {
+    /// #     fn queries(&self) -> Vec<QueryTuple> {
+    /// #         Vec::new()
+    /// #     }
+    /// # }
     /// # #[derive(Clone, Debug)]
     /// # enum Event { Deposited(u32), Withdrawn(u32) }
+    /// # impl EventMeta for Event {
+    /// #     fn event_type(&self) -> &str {
+    /// #         match self {
+    /// #             Event::Deposited(_) => "Deposited",
+    /// #             Event::Withdrawn(_) => "Withdrawn",
+    /// #         }
+    /// #     }
+    /// #     fn tags(&self) -> Vec<Tag> {
+    /// #         Vec::new()
+    /// #     }
+    /// # }
     /// # #[derive(Clone, Debug, Default)]
     /// # struct State { balance: u32 }
     /// # struct MyRepository;
     /// # #[cfg(not(feature = "single-threaded"))]
-    /// # trait EventRepository<C, Ei, Eo>: Send + Sync {
+    /// # trait EventRepository<C, Ei, Eo>: Send + Sync
+    /// # where
+    /// #     C: IdempotencyKey + CommandQueries,
+    /// #     Ei: EventMeta,
+    /// #     Eo: EventMeta,
+    /// # {
     /// #     type Error;
     /// #     async fn execute<D>(&self, command: C, decider: &D) -> Result<Vec<Eo>, Self::Error>
     /// #     where D: EventComputationTrait<C, Ei, Eo> + Send + Sync;
@@ -360,6 +542,9 @@ where
     /// # #[cfg(not(feature = "single-threaded"))]
     /// # struct EventSourcedCommandHandler<C, Ei, Eo, D, R>
     /// # where
+    /// #     C: IdempotencyKey + CommandQueries,
+    /// #     Ei: EventMeta,
+    /// #     Eo: EventMeta,
     /// #     D: EventComputationTrait<C, Ei, Eo> + Send + Sync,
     /// #     R: EventRepository<C, Ei, Eo> + Send + Sync,
     /// # {
@@ -370,6 +555,9 @@ where
     /// # #[cfg(not(feature = "single-threaded"))]
     /// # impl<C, Ei, Eo, D, R> EventSourcedCommandHandler<C, Ei, Eo, D, R>
     /// # where
+    /// #     C: IdempotencyKey + CommandQueries,
+    /// #     Ei: EventMeta,
+    /// #     Eo: EventMeta,
     /// #     D: EventComputationTrait<C, Ei, Eo> + Send + Sync,
     /// #     R: EventRepository<C, Ei, Eo> + Send + Sync,
     /// # {
@@ -389,9 +577,9 @@ where
     /// # let repository = Arc::new(MyRepository);
     /// # let handler = EventSourcedCommandHandler::new(decider, repository);
     /// // Handle multiple commands
-    /// let events1 = handler.handle(Command::Deposit(100)).await?;
-    /// let events2 = handler.handle(Command::Deposit(200)).await?;
-    /// let events3 = handler.handle(Command::Withdraw(50)).await?;
+    /// let events1 = handler.handle(Command::Deposit { amount: 100, idempotency_key: "req-1".to_string() }).await?;
+    /// let events2 = handler.handle(Command::Deposit { amount: 200, idempotency_key: "req-2".to_string() }).await?;
+    /// let events3 = handler.handle(Command::Withdraw { amount: 50, idempotency_key: "req-3".to_string() }).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -446,15 +634,42 @@ where
 /// # #[cfg(feature = "single-threaded")]
 /// # {
 /// use std::rc::Rc;
-/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider};
+/// # use fmodel_decider_rust::{EventComputationTrait, AggregateDecider, EventMeta, IdempotencyKey, CommandQueries, QueryTuple, Tag};
 /// # #[derive(Clone, Debug)]
-/// # enum Command { Deposit(u32) }
+/// # enum Command { Deposit { amount: u32, idempotency_key: String } }
+/// # impl IdempotencyKey for Command {
+/// #     fn idempotency_key(&self) -> &str {
+/// #         match self {
+/// #             Command::Deposit { idempotency_key, .. } => idempotency_key,
+/// #         }
+/// #     }
+/// # }
+/// # impl CommandQueries for Command {
+/// #     fn queries(&self) -> Vec<QueryTuple> {
+/// #         Vec::new()
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug)]
 /// # enum Event { Deposited(u32) }
+/// # impl EventMeta for Event {
+/// #     fn event_type(&self) -> &str {
+/// #         match self {
+/// #             Event::Deposited(_) => "Deposited",
+/// #         }
+/// #     }
+/// #     fn tags(&self) -> Vec<Tag> {
+/// #         Vec::new()
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug, Default)]
 /// # struct State { balance: u32 }
 /// # struct MyRepository;
-/// # trait EventRepository<C, Ei, Eo> {
+/// # trait EventRepository<C, Ei, Eo>
+/// # where
+/// #     C: IdempotencyKey + CommandQueries,
+/// #     Ei: EventMeta,
+/// #     Eo: EventMeta,
+/// # {
 /// #     type Error;
 /// #     async fn execute<D>(&self, command: C, decider: &D) -> Result<Vec<Eo>, Self::Error>
 /// #     where D: EventComputationTrait<C, Ei, Eo>;
@@ -468,6 +683,9 @@ where
 /// # use std::marker::PhantomData;
 /// # struct EventSourcedCommandHandler<C, Ei, Eo, D, R>
 /// # where
+/// #     C: IdempotencyKey + CommandQueries,
+/// #     Ei: EventMeta,
+/// #     Eo: EventMeta,
 /// #     D: EventComputationTrait<C, Ei, Eo>,
 /// #     R: EventRepository<C, Ei, Eo>,
 /// # {
@@ -477,6 +695,9 @@ where
 /// # }
 /// # impl<C, Ei, Eo, D, R> EventSourcedCommandHandler<C, Ei, Eo, D, R>
 /// # where
+/// #     C: IdempotencyKey + CommandQueries,
+/// #     Ei: EventMeta,
+/// #     Eo: EventMeta,
 /// #     D: EventComputationTrait<C, Ei, Eo>,
 /// #     R: EventRepository<C, Ei, Eo>,
 /// # {
@@ -502,6 +723,9 @@ where
 #[cfg(feature = "single-threaded")]
 pub struct EventSourcedCommandHandler<C, Ei, Eo, D, R>
 where
+    C: IdempotencyKey + CommandQueries,
+    Ei: EventMeta,
+    Eo: EventMeta,
     D: EventComputationTrait<C, Ei, Eo>,
     R: EventRepository<C, Ei, Eo>,
 {
@@ -513,6 +737,9 @@ where
 #[cfg(feature = "single-threaded")]
 impl<C, Ei, Eo, D, R> EventSourcedCommandHandler<C, Ei, Eo, D, R>
 where
+    C: IdempotencyKey + CommandQueries,
+    Ei: EventMeta,
+    Eo: EventMeta,
     D: EventComputationTrait<C, Ei, Eo>,
     R: EventRepository<C, Ei, Eo>,
 {

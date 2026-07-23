@@ -1,5 +1,5 @@
 use super::view_repository::ViewRepository;
-use crate::ViewTrait;
+use crate::{EventMeta, ViewTrait};
 
 // ================================================================================================
 // MaterializedViewHandler - Convenience Layer
@@ -13,7 +13,7 @@ use crate::ViewTrait;
 ///
 /// # Type Parameters
 ///
-/// - `E`: Event type that triggers view updates
+/// - `E`: Event type that triggers view updates. Must implement [`EventMeta`].
 /// - `S`: State type (both current and evolved state)
 /// - `V`: The view implementing `ViewTrait<S, S, E>`
 /// - `R`: The repository implementing `ViewRepository<E, S>`
@@ -29,14 +29,31 @@ use crate::ViewTrait;
 /// **Without handler (direct repository usage):**
 /// ```rust,no_run
 /// # use std::sync::Arc;
-/// # use fmodel_decider_rust::{ViewTrait, Projection};
+/// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta, Tag};
 /// # #[derive(Clone, Debug)]
 /// # enum Event { ItemAdded(String), ItemRemoved(String) }
+/// # impl EventMeta for Event {
+/// #     fn event_type(&self) -> &str {
+/// #         match self {
+/// #             Event::ItemAdded(_) => "ItemAdded",
+/// #             Event::ItemRemoved(_) => "ItemRemoved",
+/// #         }
+/// #     }
+/// #     fn tags(&self) -> Vec<Tag> {
+/// #         match self {
+/// #             Event::ItemAdded(item) => vec![Tag::new("item", item.clone())],
+/// #             Event::ItemRemoved(item) => vec![Tag::new("item", item.clone())],
+/// #         }
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug, Default)]
 /// # struct State { items: Vec<String> }
 /// # struct MyRepository;
 /// # #[cfg(not(feature = "single-threaded"))]
-/// # trait ViewRepository<E, S>: Send + Sync {
+/// # trait ViewRepository<E, S>: Send + Sync
+/// # where
+/// #     E: EventMeta,
+/// # {
 /// #     type Error;
 /// #     async fn execute<V>(&self, event: E, view: &V) -> Result<S, Self::Error>
 /// #     where V: ViewTrait<S, S, E> + Send + Sync;
@@ -65,14 +82,31 @@ use crate::ViewTrait;
 /// **With handler:**
 /// ```rust,no_run
 /// # use std::sync::Arc;
-/// # use fmodel_decider_rust::{ViewTrait, Projection};
+/// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta, Tag};
 /// # #[derive(Clone, Debug)]
 /// # enum Event { ItemAdded(String), ItemRemoved(String) }
+/// # impl EventMeta for Event {
+/// #     fn event_type(&self) -> &str {
+/// #         match self {
+/// #             Event::ItemAdded(_) => "ItemAdded",
+/// #             Event::ItemRemoved(_) => "ItemRemoved",
+/// #         }
+/// #     }
+/// #     fn tags(&self) -> Vec<Tag> {
+/// #         match self {
+/// #             Event::ItemAdded(item) => vec![Tag::new("item", item.clone())],
+/// #             Event::ItemRemoved(item) => vec![Tag::new("item", item.clone())],
+/// #         }
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug, Default)]
 /// # struct State { items: Vec<String> }
 /// # struct MyRepository;
 /// # #[cfg(not(feature = "single-threaded"))]
-/// # trait ViewRepository<E, S>: Send + Sync {
+/// # trait ViewRepository<E, S>: Send + Sync
+/// # where
+/// #     E: EventMeta,
+/// # {
 /// #     type Error;
 /// #     async fn execute<V>(&self, event: E, view: &V) -> Result<S, Self::Error>
 /// #     where V: ViewTrait<S, S, E> + Send + Sync;
@@ -88,6 +122,7 @@ use crate::ViewTrait;
 /// # #[cfg(not(feature = "single-threaded"))]
 /// # struct MaterializedViewHandler<E, S, V, R>
 /// # where
+/// #     E: EventMeta,
 /// #     V: ViewTrait<S, S, E> + Send + Sync,
 /// #     R: ViewRepository<E, S> + Send + Sync,
 /// # {
@@ -98,6 +133,7 @@ use crate::ViewTrait;
 /// # #[cfg(not(feature = "single-threaded"))]
 /// # impl<E, S, V, R> MaterializedViewHandler<E, S, V, R>
 /// # where
+/// #     E: EventMeta,
 /// #     V: ViewTrait<S, S, E> + Send + Sync,
 /// #     R: ViewRepository<E, S> + Send + Sync,
 /// # {
@@ -142,14 +178,33 @@ use crate::ViewTrait;
 ///
 /// ```rust,no_run
 /// use std::sync::Arc;
-/// # use fmodel_decider_rust::{ViewTrait, Projection};
+/// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta, Tag};
 /// # #[derive(Clone, Debug)]
 /// # enum Event { AccountOpened { id: String }, MoneyDeposited { id: String, amount: u32 }, MoneyWithdrawn { id: String, amount: u32 } }
+/// # impl EventMeta for Event {
+/// #     fn event_type(&self) -> &str {
+/// #         match self {
+/// #             Event::AccountOpened { .. } => "AccountOpened",
+/// #             Event::MoneyDeposited { .. } => "MoneyDeposited",
+/// #             Event::MoneyWithdrawn { .. } => "MoneyWithdrawn",
+/// #         }
+/// #     }
+/// #     fn tags(&self) -> Vec<Tag> {
+/// #         match self {
+/// #             Event::AccountOpened { id } => vec![Tag::new("id", id.clone())],
+/// #             Event::MoneyDeposited { id, .. } => vec![Tag::new("id", id.clone())],
+/// #             Event::MoneyWithdrawn { id, .. } => vec![Tag::new("id", id.clone())],
+/// #         }
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug, Default)]
 /// # struct State { balance: u32 }
 /// # struct MyRepository;
 /// # #[cfg(not(feature = "single-threaded"))]
-/// # trait ViewRepository<E, S>: Send + Sync {
+/// # trait ViewRepository<E, S>: Send + Sync
+/// # where
+/// #     E: EventMeta,
+/// # {
 /// #     type Error;
 /// #     async fn execute<V>(&self, event: E, view: &V) -> Result<S, Self::Error>
 /// #     where V: ViewTrait<S, S, E> + Send + Sync;
@@ -165,6 +220,7 @@ use crate::ViewTrait;
 /// # #[cfg(not(feature = "single-threaded"))]
 /// # struct MaterializedViewHandler<E, S, V, R>
 /// # where
+/// #     E: EventMeta,
 /// #     V: ViewTrait<S, S, E> + Send + Sync,
 /// #     R: ViewRepository<E, S> + Send + Sync,
 /// # {
@@ -175,6 +231,7 @@ use crate::ViewTrait;
 /// # #[cfg(not(feature = "single-threaded"))]
 /// # impl<E, S, V, R> MaterializedViewHandler<E, S, V, R>
 /// # where
+/// #     E: EventMeta,
 /// #     V: ViewTrait<S, S, E> + Send + Sync,
 /// #     R: ViewRepository<E, S> + Send + Sync,
 /// # {
@@ -221,6 +278,8 @@ use crate::ViewTrait;
 #[cfg(not(feature = "single-threaded"))]
 pub struct MaterializedViewHandler<E, S, V, R>
 where
+    E: EventMeta + Send + Sync,
+    S: Send + Sync,
     V: ViewTrait<S, S, E> + Send + Sync,
     R: ViewRepository<E, S> + Send + Sync,
 {
@@ -232,6 +291,8 @@ where
 #[cfg(not(feature = "single-threaded"))]
 impl<E, S, V, R> MaterializedViewHandler<E, S, V, R>
 where
+    E: EventMeta + Send + Sync,
+    S: Send + Sync,
     V: ViewTrait<S, S, E> + Send + Sync,
     R: ViewRepository<E, S> + Send + Sync,
 {
@@ -250,14 +311,29 @@ where
     ///
     /// ```rust,no_run
     /// use std::sync::Arc;
-    /// # use fmodel_decider_rust::{ViewTrait, Projection};
+    /// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta, Tag};
     /// # #[derive(Clone, Debug)]
     /// # enum Event { ItemAdded(String) }
+    /// # impl EventMeta for Event {
+    /// #     fn event_type(&self) -> &str {
+    /// #         match self {
+    /// #             Event::ItemAdded(_) => "ItemAdded",
+    /// #         }
+    /// #     }
+    /// #     fn tags(&self) -> Vec<Tag> {
+    /// #         match self {
+    /// #             Event::ItemAdded(item) => vec![Tag::new("item", item.clone())],
+    /// #         }
+    /// #     }
+    /// # }
     /// # #[derive(Clone, Debug, Default)]
     /// # struct State { items: Vec<String> }
     /// # struct MyRepository;
     /// # #[cfg(not(feature = "single-threaded"))]
-    /// # trait ViewRepository<E, S>: Send + Sync {
+    /// # trait ViewRepository<E, S>: Send + Sync
+    /// # where
+    /// #     E: EventMeta,
+    /// # {
     /// #     type Error;
     /// #     async fn execute<V>(&self, event: E, view: &V) -> Result<S, Self::Error>
     /// #     where V: ViewTrait<S, S, E> + Send + Sync;
@@ -273,6 +349,7 @@ where
     /// # #[cfg(not(feature = "single-threaded"))]
     /// # struct MaterializedViewHandler<E, S, V, R>
     /// # where
+    /// #     E: EventMeta,
     /// #     V: ViewTrait<S, S, E> + Send + Sync,
     /// #     R: ViewRepository<E, S> + Send + Sync,
     /// # {
@@ -283,6 +360,7 @@ where
     /// # #[cfg(not(feature = "single-threaded"))]
     /// # impl<E, S, V, R> MaterializedViewHandler<E, S, V, R>
     /// # where
+    /// #     E: EventMeta,
     /// #     V: ViewTrait<S, S, E> + Send + Sync,
     /// #     R: ViewRepository<E, S> + Send + Sync,
     /// # {
@@ -331,14 +409,31 @@ where
     ///
     /// ```rust,no_run
     /// # use std::sync::Arc;
-    /// # use fmodel_decider_rust::{ViewTrait, Projection};
+    /// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta, Tag};
     /// # #[derive(Clone, Debug)]
     /// # enum Event { ItemAdded(String), ItemRemoved(String) }
+    /// # impl EventMeta for Event {
+    /// #     fn event_type(&self) -> &str {
+    /// #         match self {
+    /// #             Event::ItemAdded(_) => "ItemAdded",
+    /// #             Event::ItemRemoved(_) => "ItemRemoved",
+    /// #         }
+    /// #     }
+    /// #     fn tags(&self) -> Vec<Tag> {
+    /// #         match self {
+    /// #             Event::ItemAdded(item) => vec![Tag::new("item", item.clone())],
+    /// #             Event::ItemRemoved(item) => vec![Tag::new("item", item.clone())],
+    /// #         }
+    /// #     }
+    /// # }
     /// # #[derive(Clone, Debug, Default)]
     /// # struct State { items: Vec<String> }
     /// # struct MyRepository;
     /// # #[cfg(not(feature = "single-threaded"))]
-    /// # trait ViewRepository<E, S>: Send + Sync {
+    /// # trait ViewRepository<E, S>: Send + Sync
+    /// # where
+    /// #     E: EventMeta,
+    /// # {
     /// #     type Error;
     /// #     async fn execute<V>(&self, event: E, view: &V) -> Result<S, Self::Error>
     /// #     where V: ViewTrait<S, S, E> + Send + Sync;
@@ -354,6 +449,7 @@ where
     /// # #[cfg(not(feature = "single-threaded"))]
     /// # struct MaterializedViewHandler<E, S, V, R>
     /// # where
+    /// #     E: EventMeta,
     /// #     V: ViewTrait<S, S, E> + Send + Sync,
     /// #     R: ViewRepository<E, S> + Send + Sync,
     /// # {
@@ -364,6 +460,7 @@ where
     /// # #[cfg(not(feature = "single-threaded"))]
     /// # impl<E, S, V, R> MaterializedViewHandler<E, S, V, R>
     /// # where
+    /// #     E: EventMeta,
     /// #     V: ViewTrait<S, S, E> + Send + Sync,
     /// #     R: ViewRepository<E, S> + Send + Sync,
     /// # {
@@ -436,13 +533,28 @@ where
 /// # #[cfg(feature = "single-threaded")]
 /// # {
 /// use std::rc::Rc;
-/// # use fmodel_decider_rust::{ViewTrait, Projection};
+/// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta, Tag};
 /// # #[derive(Clone, Debug)]
 /// # enum Event { ItemAdded(String) }
+/// # impl EventMeta for Event {
+/// #     fn event_type(&self) -> &str {
+/// #         match self {
+/// #             Event::ItemAdded(_) => "ItemAdded",
+/// #         }
+/// #     }
+/// #     fn tags(&self) -> Vec<Tag> {
+/// #         match self {
+/// #             Event::ItemAdded(item) => vec![Tag::new("item", item.clone())],
+/// #         }
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug, Default)]
 /// # struct State { items: Vec<String> }
 /// # struct MyRepository;
-/// # trait ViewRepository<E, S> {
+/// # trait ViewRepository<E, S>
+/// # where
+/// #     E: EventMeta,
+/// # {
 /// #     type Error;
 /// #     async fn execute<V>(&self, event: E, view: &V) -> Result<S, Self::Error>
 /// #     where V: ViewTrait<S, S, E>;
@@ -456,6 +568,7 @@ where
 /// # use std::marker::PhantomData;
 /// # struct MaterializedViewHandler<E, S, V, R>
 /// # where
+/// #     E: EventMeta,
 /// #     V: ViewTrait<S, S, E>,
 /// #     R: ViewRepository<E, S>,
 /// # {
@@ -465,6 +578,7 @@ where
 /// # }
 /// # impl<E, S, V, R> MaterializedViewHandler<E, S, V, R>
 /// # where
+/// #     E: EventMeta,
 /// #     V: ViewTrait<S, S, E>,
 /// #     R: ViewRepository<E, S>,
 /// # {
@@ -495,6 +609,7 @@ where
 #[cfg(feature = "single-threaded")]
 pub struct MaterializedViewHandler<E, S, V, R>
 where
+    E: EventMeta,
     V: ViewTrait<S, S, E>,
     R: ViewRepository<E, S>,
 {
@@ -506,6 +621,7 @@ where
 #[cfg(feature = "single-threaded")]
 impl<E, S, V, R> MaterializedViewHandler<E, S, V, R>
 where
+    E: EventMeta,
     V: ViewTrait<S, S, E>,
     R: ViewRepository<E, S>,
 {

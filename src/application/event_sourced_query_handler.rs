@@ -1,26 +1,4 @@
-use crate::ViewTrait;
-
-// ================================================================================================
-// QueryTuple - Event Query Specification
-// ================================================================================================
-
-/// A query specification for fetching events from the event store.
-///
-/// Consists of an event type and zero or more tags that identify the event stream to query.
-/// This is the core crate's dependency-free equivalent of the TypeScript `QueryTuple` type
-/// from fmodel-ts: `[...tags, eventType]`.
-///
-/// # Fields
-///
-/// - `event_type`: The event type identifier (e.g., `"RestaurantCreatedEvent"`)
-/// - `tags`: Tags to filter by, in `"key:value"` format. Empty vec queries all events of the type.
-#[derive(Debug, Clone)]
-pub struct QueryTuple {
-    /// The event type identifier to query.
-    pub event_type: String,
-    /// Tags to filter by, in `"key:value"` format.
-    pub tags: Vec<String>,
-}
+use crate::{EventMeta, QueryTuple, ViewTrait};
 
 // ================================================================================================
 // EventLoader Trait
@@ -36,9 +14,14 @@ pub struct QueryTuple {
 ///
 /// # Type Parameters
 ///
-/// - `E`: Event type to load
+/// - `E`: Event type to load. Must implement [`EventMeta`], since `QueryTuple` queries by
+///   the exact `event_type`/`tags` shape `EventMeta` produces. In multi-threaded mode, must
+///   also be `Send + Sync` since it is part of the `Send` future returned by `load`.
 #[cfg(not(feature = "single-threaded"))]
-pub trait EventLoader<E>: Send + Sync {
+pub trait EventLoader<E>: Send + Sync
+where
+    E: EventMeta + Send + Sync,
+{
     /// Error type for load operations.
     type Error;
 
@@ -53,7 +36,10 @@ pub trait EventLoader<E>: Send + Sync {
 ///
 /// See the multi-threaded `EventLoader` documentation for details.
 #[cfg(feature = "single-threaded")]
-pub trait EventLoader<E> {
+pub trait EventLoader<E>
+where
+    E: EventMeta,
+{
     /// Error type for load operations.
     type Error;
 
@@ -85,6 +71,7 @@ pub trait EventLoader<E> {
 #[cfg(not(feature = "single-threaded"))]
 pub struct EventSourcedQueryHandler<E, S, V, L>
 where
+    E: EventMeta + Send + Sync,
     V: ViewTrait<S, S, E> + Send + Sync,
     L: EventLoader<E> + Send + Sync,
 {
@@ -96,6 +83,7 @@ where
 #[cfg(not(feature = "single-threaded"))]
 impl<E, S, V, L> EventSourcedQueryHandler<E, S, V, L>
 where
+    E: EventMeta + Send + Sync,
     V: ViewTrait<S, S, E> + Send + Sync,
     L: EventLoader<E> + Send + Sync,
 {
@@ -148,6 +136,7 @@ where
 #[cfg(feature = "single-threaded")]
 pub struct EventSourcedQueryHandler<E, S, V, L>
 where
+    E: EventMeta,
     V: ViewTrait<S, S, E>,
     L: EventLoader<E>,
 {
@@ -159,6 +148,7 @@ where
 #[cfg(feature = "single-threaded")]
 impl<E, S, V, L> EventSourcedQueryHandler<E, S, V, L>
 where
+    E: EventMeta,
     V: ViewTrait<S, S, E>,
     L: EventLoader<E>,
 {

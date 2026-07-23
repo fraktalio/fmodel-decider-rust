@@ -183,8 +183,7 @@ mod workflow;
 
 pub use application::{
     EventLoader, EventRepository, EventSourcedCommandHandler, EventSourcedQueryHandler,
-    MaterializedViewHandler, QueryTuple, StateRepository, StateStoredCommandHandler,
-    ViewRepository,
+    MaterializedViewHandler, StateRepository, StateStoredCommandHandler, ViewRepository,
 };
 pub use decider::AggregateDecider;
 pub use dynamic_decider::DCBDecider;
@@ -541,6 +540,48 @@ pub trait ProcessTrait<AR, Si, So, Ei, Eo, A>: DeciderTrait<AR, Si, So, Ei, Eo> 
     fn pending(&self, state: &Si) -> Self::Actions;
 }
 
+/// A single `key:value` tag attached to an event, used for secondary indexing.
+///
+/// Encapsulates the `"key:value"` string convention structurally instead of leaving
+/// callers to hand-format strings (e.g. `format!("id:{}", id)`), which removes the risk
+/// of malformed tags: a missing separator, or a value that itself contains a colon and
+/// breaks naive parsing downstream.
+///
+/// `Tag` implements [`std::fmt::Display`], producing the canonical `"key:value"` wire
+/// format that repository implementations index on.
+///
+/// # Example
+///
+/// ```rust
+/// use fmodel_decider_rust::Tag;
+///
+/// let tag = Tag::new("restaurantId", "123");
+/// assert_eq!(tag.to_string(), "restaurantId:123");
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Tag {
+    /// The tag's key (e.g. `"restaurantId"`).
+    pub key: String,
+    /// The tag's value (e.g. `"123"`).
+    pub value: String,
+}
+
+impl Tag {
+    /// Creates a new tag from a key and value.
+    pub fn new(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value: value.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for Tag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.key, self.value)
+    }
+}
+
 /// Trait for events that carry metadata for indexing and querying.
 ///
 /// Used by repository implementations (e.g., FoundationDB) to build secondary
@@ -556,7 +597,7 @@ pub trait ProcessTrait<AR, Si, So, Ei, Eo, A>: DeciderTrait<AR, Si, So, Ei, Eo> 
 ///
 /// ## Tags
 ///
-/// Tags are `"key:value"` strings extracted from the event's own fields. They serve
+/// Tags are [`Tag`] values extracted from the event's own fields. They serve
 /// as the basis for secondary indexing and stream identification. Repository
 /// implementations use the power set of an event's tags to build indexes that
 /// support queries by any tag combination.
@@ -564,7 +605,7 @@ pub trait ProcessTrait<AR, Si, So, Ei, Eo, A>: DeciderTrait<AR, Si, So, Ei, Eo> 
 /// ## Example
 ///
 /// ```rust
-/// use fmodel_decider_rust::EventMeta;
+/// use fmodel_decider_rust::{EventMeta, Tag};
 ///
 /// struct RestaurantCreatedEvent {
 ///     restaurant_id: String,
@@ -575,8 +616,8 @@ pub trait ProcessTrait<AR, Si, So, Ei, Eo, A>: DeciderTrait<AR, Si, So, Ei, Eo> 
 ///         "RestaurantCreatedEvent"
 ///     }
 ///
-///     fn tags(&self) -> Vec<String> {
-///         vec![format!("restaurantId:{}", self.restaurant_id)]
+///     fn tags(&self) -> Vec<Tag> {
+///         vec![Tag::new("restaurantId", self.restaurant_id.clone())]
 ///     }
 /// }
 /// ```
@@ -587,12 +628,31 @@ pub trait EventMeta {
     /// forming the first element of tag index and last event pointer keys.
     fn event_type(&self) -> &str;
 
-    /// Returns tags extracted from the event's fields in `"key:value"` format.
+    /// Returns tags extracted from the event's fields.
     ///
     /// Tags are used for secondary indexing and stream identification. Repository
     /// implementations build power set indexes over these tags to support queries
     /// by any combination.
-    fn tags(&self) -> Vec<String>;
+    fn tags(&self) -> Vec<Tag>;
+}
+
+/// A query specification for fetching events from the event store.
+///
+/// Consists of an event type and zero or more tags that identify the event stream to query.
+/// This is the core crate's dependency-free equivalent of the TypeScript `QueryTuple` type
+/// from fmodel-ts: `[...tags, eventType]`.
+///
+/// # Fields
+///
+/// - `event_type`: The event type identifier (e.g., `"RestaurantCreatedEvent"`)
+/// - `tags`: Tags to filter by. Empty vec queries all events of the type. These are matched
+///   against the tags an event exposes via [`EventMeta::tags`].
+#[derive(Debug, Clone)]
+pub struct QueryTuple {
+    /// The event type identifier to query.
+    pub event_type: String,
+    /// Tags to filter by.
+    pub tags: Vec<Tag>,
 }
 
 /// Implemented by commands that carry an idempotency key.
@@ -603,4 +663,36 @@ pub trait EventMeta {
 pub trait IdempotencyKey {
     /// Returns the idempotency key for this command.
     fn idempotency_key(&self) -> &str;
+}
+
+/// Implemented by commands that declare which events are relevant to deciding them.
+///
+/// Used by [`EventRepository`](crate::EventRepository) implementations backed by a
+/// Dynamic Consistency Boundary (DCB) event store: instead of fetching a single fixed
+/// stream, the repository loads exactly the events matching the query tuples this method
+/// returns, then folds them through the decider before computing new events. This mirrors
+/// how [`EventMeta::tags`] lets events declare their own indexing tags — here the command
+/// declares which of those tags identify the events it needs to see.
+///
+/// # Example
+///
+/// ```rust
+/// use fmodel_decider_rust::{CommandQueries, QueryTuple, Tag};
+///
+/// struct DepositCommand {
+///     account_id: String,
+/// }
+///
+/// impl CommandQueries for DepositCommand {
+///     fn queries(&self) -> Vec<QueryTuple> {
+///         vec![QueryTuple {
+///             event_type: "AccountEvent".to_string(),
+///             tags: vec![Tag::new("accountId", self.account_id.clone())],
+///         }]
+///     }
+/// }
+/// ```
+pub trait CommandQueries {
+    /// Returns the query tuples identifying events relevant to deciding this command.
+    fn queries(&self) -> Vec<QueryTuple>;
 }

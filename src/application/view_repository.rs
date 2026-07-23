@@ -1,4 +1,4 @@
-use crate::ViewTrait;
+use crate::{EventMeta, ViewTrait};
 
 // ================================================================================================
 // ViewRepository Trait
@@ -12,8 +12,11 @@ use crate::ViewTrait;
 ///
 /// # Type Parameters
 ///
-/// - `E`: Event type that triggers view updates
-/// - `S`: State type (both current and evolved state)
+/// - `E`: Event type that triggers view updates. Must implement [`EventMeta`] so repository
+///   implementations can build secondary indexes. In multi-threaded mode, must also be
+///   `Send + Sync` since it is moved into the `Send` future returned by `execute`.
+/// - `S`: State type (both current and evolved state). In multi-threaded mode, must also be
+///   `Send + Sync`.
 ///
 /// # Associated Types
 ///
@@ -52,10 +55,24 @@ use crate::ViewTrait;
 /// ```rust,no_run
 /// use std::collections::HashMap;
 /// use std::sync::{Arc, Mutex};
-/// # use fmodel_decider_rust::{ViewTrait, Projection};
+/// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta, Tag};
 ///
 /// # #[derive(Clone, Debug)]
 /// # enum Event { AccountOpened { id: String }, MoneyDeposited { id: String, amount: u32 } }
+/// # impl EventMeta for Event {
+/// #     fn event_type(&self) -> &str {
+/// #         match self {
+/// #             Event::AccountOpened { .. } => "AccountOpened",
+/// #             Event::MoneyDeposited { .. } => "MoneyDeposited",
+/// #         }
+/// #     }
+/// #     fn tags(&self) -> Vec<Tag> {
+/// #         match self {
+/// #             Event::AccountOpened { id } => vec![Tag::new("id", id.clone())],
+/// #             Event::MoneyDeposited { id, .. } => vec![Tag::new("id", id.clone())],
+/// #         }
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug, Default)]
 /// # struct State { balance: u32 }
 ///
@@ -65,7 +82,10 @@ use crate::ViewTrait;
 /// }
 ///
 /// # #[cfg(not(feature = "single-threaded"))]
-/// # trait ViewRepository<E, S>: Send + Sync {
+/// # trait ViewRepository<E, S>: Send + Sync
+/// # where
+/// #     E: EventMeta,
+/// # {
 /// #     type Error;
 /// #     async fn execute<V>(&self, event: E, view: &V) -> Result<S, Self::Error>
 /// #     where V: ViewTrait<S, S, E> + Send + Sync;
@@ -152,7 +172,11 @@ use crate::ViewTrait;
 /// }
 /// ```
 #[cfg(not(feature = "single-threaded"))]
-pub trait ViewRepository<E, S>: Send + Sync {
+pub trait ViewRepository<E, S>: Send + Sync
+where
+    E: EventMeta + Send + Sync,
+    S: Send + Sync,
+{
     /// Error type for repository operations.
     ///
     /// This should capture both infrastructure errors (fetch/save failures) and view
@@ -191,14 +215,29 @@ pub trait ViewRepository<E, S>: Send + Sync {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use fmodel_decider_rust::{ViewTrait, Projection};
+    /// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta, Tag};
     /// # #[derive(Clone, Debug)]
     /// # enum Event { ItemAdded(String) }
+    /// # impl EventMeta for Event {
+    /// #     fn event_type(&self) -> &str {
+    /// #         match self {
+    /// #             Event::ItemAdded(_) => "ItemAdded",
+    /// #         }
+    /// #     }
+    /// #     fn tags(&self) -> Vec<Tag> {
+    /// #         match self {
+    /// #             Event::ItemAdded(item) => vec![Tag::new("item", item.clone())],
+    /// #         }
+    /// #     }
+    /// # }
     /// # #[derive(Clone, Debug, Default)]
     /// # struct State { items: Vec<String> }
     /// # struct MyRepository;
     /// # #[cfg(not(feature = "single-threaded"))]
-    /// # trait ViewRepository<E, S>: Send + Sync {
+    /// # trait ViewRepository<E, S>: Send + Sync
+    /// # where
+    /// #     E: EventMeta,
+    /// # {
     /// #     type Error;
     /// #     async fn execute<V>(&self, event: E, view: &V) -> Result<S, Self::Error>
     /// #     where V: ViewTrait<S, S, E> + Send + Sync;
@@ -304,10 +343,22 @@ pub trait ViewRepository<E, S>: Send + Sync {
 /// use std::rc::Rc;
 /// use std::cell::RefCell;
 /// use std::collections::HashMap;
-/// # use fmodel_decider_rust::{ViewTrait, Projection};
+/// # use fmodel_decider_rust::{ViewTrait, Projection, EventMeta, Tag};
 ///
 /// # #[derive(Clone, Debug)]
 /// # enum Event { ItemAdded(String) }
+/// # impl EventMeta for Event {
+/// #     fn event_type(&self) -> &str {
+/// #         match self {
+/// #             Event::ItemAdded(_) => "ItemAdded",
+/// #         }
+/// #     }
+/// #     fn tags(&self) -> Vec<Tag> {
+/// #         match self {
+/// #             Event::ItemAdded(item) => vec![Tag::new("item", item.clone())],
+/// #         }
+/// #     }
+/// # }
 /// # #[derive(Clone, Debug, Default)]
 /// # struct State { items: Vec<String> }
 ///
@@ -316,7 +367,10 @@ pub trait ViewRepository<E, S>: Send + Sync {
 ///     views: Rc<RefCell<HashMap<String, State>>>,
 /// }
 ///
-/// # trait ViewRepository<E, S> {
+/// # trait ViewRepository<E, S>
+/// # where
+/// #     E: EventMeta,
+/// # {
 /// #     type Error;
 /// #     async fn execute<V>(&self, event: E, view: &V) -> Result<S, Self::Error>
 /// #     where V: ViewTrait<S, S, E>;
@@ -340,7 +394,10 @@ pub trait ViewRepository<E, S>: Send + Sync {
 /// # }
 /// ```
 #[cfg(feature = "single-threaded")]
-pub trait ViewRepository<E, S> {
+pub trait ViewRepository<E, S>
+where
+    E: EventMeta,
+{
     /// Error type for repository operations.
     type Error;
 
