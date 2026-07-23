@@ -1,6 +1,6 @@
 [package]
 name = "fmodel-decider-rust"
-version = "0.4.0"
+version = "0.3.0"
 edition = "2024"
 description = "Pure, type-safe, event-driven decision engine with progressive type refinement for event-sourced and state-stored systems"
 license = "Apache-2.0"
